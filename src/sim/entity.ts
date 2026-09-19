@@ -12,6 +12,8 @@ export class Entity {
     foodEaten = 0;
     /** Lifetime food energy gained — the fitness metric natural selection acts on. */
     fitness = 0;
+    /** Ticks before this entity may reproduce again. */
+    reproduceCooldown = 0;
     /** Lineage: [direct parent id, that parent's own parent id (or itself)]. */
     parentIds: readonly [number, number] | null = null;
 
