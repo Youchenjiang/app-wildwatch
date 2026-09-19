@@ -24,9 +24,10 @@ export function createRenderContext(
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x1c2a22);
 
-    const view = Math.max(worldWidth, worldHeight) * 0.62;
+    const view = Math.max(worldWidth, worldHeight) * 0.72;
     const camera = new THREE.OrthographicCamera(-view, view, view, -view, 0.1, 500);
-    camera.position.set(worldWidth / 2, 140, worldHeight / 2);
+    // Angled god view: offset from straight overhead so 3D shapes stay visible.
+    camera.position.set(worldWidth / 2 - 42, 118, worldHeight / 2 + 42);
     camera.lookAt(worldWidth / 2, 0, worldHeight / 2);
 
     scene.add(new THREE.HemisphereLight(0xffffff, 0x3a5a3f, 1.1));
