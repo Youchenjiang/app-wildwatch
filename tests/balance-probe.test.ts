@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_BRAIN_SPEC, World, type WorldConfig } from "../src/sim/world";
+import { World, type WorldConfig } from "../src/sim/world";
+import { makeSeeding } from "../src/sim/seeding";
 
 /**
  * Seeding sweep — the "老天爺" training loop in miniature.
@@ -8,26 +9,12 @@ import { DEFAULT_BRAIN_SPEC, World, type WorldConfig } from "../src/sim/world";
  * environment behavior is occasional random plant growth; extinction of
  * either species is terminal and ends the run. So the score of a seeding
  * is simply how long the run stays alive.
+ *
+ * Candidates derive from the shared makeSeeding() so the probe can never
+ * validate a seeding the live app is not running.
  */
-function makeConfig(seed: number, overrides: Partial<WorldConfig> = {}): WorldConfig {
-    return {
-        width: 120,
-        height: 120,
-        seed,
-        herbivoreCount: 60,
-        carnivoreCount: 8,
-        plantCount: 240,
-        plantRegrowPerTick: 3,
-        plantEnergy: 18,
-        maxPlants: 320,
-        turnLength: 100,
-        populationCap: 500,
-        mateRange: 3,
-        mutationRate: 0.06,
-        mutationSigma: 0.35,
-        brainSpec: DEFAULT_BRAIN_SPEC,
-        ...overrides,
-    };
+function makeConfig(overrides: Partial<WorldConfig> = {}): WorldConfig {
+    return { ...makeSeeding(), ...overrides };
 }
 
 /** Candidate seedings: vary plant inflow, predator load and population cap. */
@@ -45,7 +32,7 @@ const MAX_TICKS = 30000;
 const TARGET_TICKS = 30000;
 
 function runSeeding(label: string, overrides: Partial<WorldConfig>): number {
-    const world = new World(makeConfig(20260907, overrides));
+    const world = new World(makeConfig(overrides));
     let endedAt = -1;
     let maxHerb = 0;
     let maxCarn = 0;
