@@ -8,7 +8,7 @@ import { createMemory, type Memory } from "./memory";
 import { LifeGrid } from "./learning";
 
 export const DEFAULT_BRAIN_SPEC: BrainSpec = {
-    inputSize: 6,
+    inputSize: 8,
     hiddenSize: 5,
     outputSize: 2,
 };
@@ -70,6 +70,15 @@ interface Sense {
     dist: number;
 }
 
+/** Chance a carnivore catches prey on contact; below 1 lets prey escape. */
+const CATCH_CHANCE = 0.4;
+/** Prey density at which hunts reach full saturation. */
+const PREY_REFUGE_DENSITY = 0.012;
+/** Extra catch-rate multiplier when prey are abundant. */
+const SATURATION_BONUS = 1.6;
+/** Floor on the catch factor when prey are critically rare (prey refuge). */
+const REFUGE_FLOOR = 0.05;
+
 const EMPTY_COUNTS = (): Record<SpeciesKind, number> => ({ herbivore: 0, carnivore: 0 });
 const KINDS: readonly SpeciesKind[] = ["herbivore", "carnivore"];
 const REPRODUCE_COOLDOWN = 60;
@@ -90,6 +99,8 @@ export class World {
     private nextId = 1;
     private births: Record<SpeciesKind, number> = EMPTY_COUNTS();
     private deaths: Record<SpeciesKind, number> = EMPTY_COUNTS();
+    /** Set once either species has died out; the run is over (rules forbid re-seeding). */
+    private gameOverBy: SpeciesKind | null = null;
 
     constructor(config: WorldConfig) {
         this.config = config;
@@ -162,7 +173,7 @@ export class World {
             randRange(this.rng, 0, Math.PI * 2),
             brain,
             this.nextId++,
-            childEnergy ?? species.maxEnergy * 0.8,
+            childEnergy ?? species.reproduceEnergy * 0.5,
             memory ?? createMemory(this.config.memoryCapacity ?? 64),
         );
         entity.generation = generation;
@@ -191,7 +202,7 @@ export class World {
     tickStep(): void {
         this.tick++;
 
-        // Plants regrow at a steady rate (era-dependent rate comes later).
+        // Plants regrow at a steady rate, capped by world carrying capacity.
         for (let i = 0; i < this.config.plantRegrowPerTick; i++) {
             if (this.plants.length >= this.config.maxPlants) break;
             this.spawnPlant();
@@ -205,6 +216,16 @@ export class World {
         }
 
         this.recordPopulationDensity();
+
+        // Either species dying out ends the run: no re-seeding, ever.
+        if (this.gameOverBy === null) {
+            for (const kind of KINDS) {
+                if (this.populationOf(kind) === 0) {
+                    this.gameOverBy = kind;
+                    break;
+                }
+            }
+        }
 
         // Sweep the dead.
         this.entities = this.entities.filter((e) => e.alive);
@@ -324,6 +345,25 @@ export class World {
     private buildInputs(e: Entity, sense: Sense | null): number[] {
         const s = e.species;
         const dist = sense ? Math.min(1, sense.dist / s.senseRange) : 1;
+        // Herbivores also sense the nearest carnivore so they can evolve flight.
+        let threatDx = 0;
+        let threatDist = 1;
+        if (s.kind === "herbivore") {
+            const threats: Entity[] = [];
+            this.grid.query(e.pos.x, e.pos.y, s.senseRange, threats);
+            let bestD2 = Infinity;
+            for (const t of threats) {
+                if (!t.alive || t.species.kind !== "carnivore") continue;
+                const dx = t.pos.x - e.pos.x;
+                const dy = t.pos.y - e.pos.y;
+                const d2 = dx * dx + dy * dy;
+                if (d2 < bestD2) {
+                    bestD2 = d2;
+                    threatDx = dx / s.senseRange;
+                    threatDist = Math.min(1, Math.sqrt(d2) / s.senseRange);
+                }
+            }
+        }
         return [
             Math.sin(e.angle),
             Math.cos(e.angle),
@@ -331,6 +371,8 @@ export class World {
             sense ? sense.dy / s.senseRange : 0,
             dist,
             Math.min(1, e.energy / s.maxEnergy),
+            threatDx,
+            threatDist,
         ];
     }
 
@@ -376,13 +418,23 @@ export class World {
             e.pos,
         );
         if (found) {
-            const meat = found.item.energy;
-            this.kill(found.item, "preyed");
-            const gained = meat * 0.6 + s.foodEnergy;
-            e.energy += gained;
-            e.fitness += gained;
-            e.foodEaten++;
-            e.memory.record(inputs, 0, gained, e.age);
+            // Type-III functional response with a hard prey refuge: when
+            // prey are rare, hunts almost always fail, so predators starve
+            // back before they can finish the prey off. When prey are
+            // abundant, hunts saturate and predators can boom.
+            const preyDensity =
+                this.populationOf("herbivore") / (this.config.width * this.config.height);
+            const scarcity = Math.min(1, preyDensity / PREY_REFUGE_DENSITY);
+            const factor = scarcity * scarcity * scarcity * SATURATION_BONUS + REFUGE_FLOOR;
+            if (this.rng() < CATCH_CHANCE * factor) {
+                const meat = found.item.energy;
+                this.kill(found.item, "preyed");
+                const gained = Math.min(meat * 0.6, s.maxEnergy * 0.5) + s.foodEnergy;
+                e.energy += gained;
+                e.fitness += gained;
+                e.foodEaten++;
+                e.memory.record(inputs, 0, gained, e.age);
+            }
         }
     }
 
@@ -397,7 +449,9 @@ export class World {
         // Prefer sexual reproduction with a nearby eligible mate; fall back
         // to asexual cloning so lone survivors can still propagate.
         const mate = this.findMate(e);
-        const childEnergy = s.reproduceCost / s.litterSize;
+        // Newborns start well below the breeding threshold: they must eat
+        // before they can reproduce, which tempers exponential booms.
+        const childEnergy = s.reproduceEnergy * 0.25;
         const generation = mate
             ? Math.max(e.generation, mate.generation) + 1
             : e.generation + 1;
@@ -516,6 +570,11 @@ export class World {
             if (e.alive && e.species.kind === kind) count++;
         }
         return count;
+    }
+
+    /** The species whose extinction ended the run, or null while it continues. */
+    get gameOver(): SpeciesKind | null {
+        return this.gameOverBy;
     }
 
     avgEnergyOf(kind: SpeciesKind): number {
