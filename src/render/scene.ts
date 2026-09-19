@@ -29,6 +29,10 @@ export function createRenderContext(
     // Angled god view: offset from straight overhead so 3D shapes stay visible.
     camera.position.set(worldWidth / 2 - 42, 118, worldHeight / 2 + 42);
     camera.lookAt(worldWidth / 2, 0, worldHeight / 2);
+    // Remember the default oblique offset so the observer camera can scale it.
+    (camera.userData as { baseOffset?: THREE.Vector3 }).baseOffset = camera.position
+        .clone()
+        .sub(new THREE.Vector3(worldWidth / 2, 0, worldHeight / 2));
 
     scene.fog = new THREE.Fog(0x0c140e, 150, 320);
 
