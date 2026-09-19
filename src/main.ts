@@ -20,10 +20,14 @@ function makeConfig(): WorldConfig {
         turnLength: 100,
         populationCap: 500,
         mateRange: 3,
-        mutationRate: 0.06,
-        mutationSigma: 0.35,
-        brainSpec: DEFAULT_BRAIN_SPEC,
-    };
+    mutationRate: 0.06,
+    mutationSigma: 0.35,
+    brainSpec: DEFAULT_BRAIN_SPEC,
+    memoryCapacity: 64,
+    lifeGridCellsize: 6,
+    lifeGridDecay: 0.05,
+    lifeGridCap: 20,
+};
 }
 
 let world = new World(makeConfig());
