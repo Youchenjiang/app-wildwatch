@@ -39,7 +39,7 @@ function frame(): void {
     }
     pool.sync(world.entities, world.plants, world.carrions);
     ctx.renderer.render(ctx.scene, ctx.camera);
-    hud.update(world);
+    hud.update(world, paused);
     requestAnimationFrame(frame);
 }
 
