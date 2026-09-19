@@ -8,12 +8,21 @@ import { createMemory, type Memory } from "./memory";
 import { LifeGrid } from "./learning";
 
 export const DEFAULT_BRAIN_SPEC: BrainSpec = {
-    inputSize: 8,
+    inputSize: 9,
     hiddenSize: 5,
     outputSize: 2,
 };
 
 export interface Plant {
+    id: number;
+    x: number;
+    y: number;
+    energy: number;
+    alive: boolean;
+}
+
+/** A dead animal: returns its unconsumed energy to the environment (rule 6). */
+export interface Carrion {
     id: number;
     x: number;
     y: number;
@@ -62,6 +71,8 @@ export interface WorldConfig {
     lifeGridDecay?: number;
     /** Life-grid per-cell cap (default 20). */
     lifeGridCap?: number;
+    /** Energy a corpse loses per tick as it decays (default 0.05). */
+    carrionDecayPerTick?: number;
 }
 
 interface Sense {
@@ -88,6 +99,7 @@ export class World {
     rng: RNG;
     entities: Entity[] = [];
     plants: Plant[] = [];
+    carrions: Carrion[] = [];
     records: TurnRecord[] = [];
 
     tick = 0;
@@ -95,6 +107,7 @@ export class World {
 
     private readonly grid = new SpatialGrid<Entity>(10);
     private readonly plantGrid = new SpatialGrid<Plant>(10);
+    private readonly carrionGrid = new SpatialGrid<Carrion>(10);
     readonly lifeGrid: LifeGrid;
     private nextId = 1;
     private births: Record<SpeciesKind, number> = EMPTY_COUNTS();
@@ -231,6 +244,14 @@ export class World {
         this.entities = this.entities.filter((e) => e.alive);
         this.plants = this.plants.filter((p) => p.alive);
 
+        // Carrion decays naturally; fully decayed corpses vanish (rule 6).
+        const decay = this.config.carrionDecayPerTick ?? 0.05;
+        for (const c of this.carrions) {
+            if (c.alive) c.energy -= decay;
+            if (c.energy <= 0) c.alive = false;
+        }
+        this.carrions = this.carrions.filter((c) => c.alive);
+
         // Turn snapshot.
         if (this.tick % this.config.turnLength === 0) {
             this.recordSnapshot();
@@ -246,6 +267,10 @@ export class World {
         this.plantGrid.clear();
         for (const p of this.plants) {
             if (p.alive) this.plantGrid.insert(p.x, p.y, p);
+        }
+        this.carrionGrid.clear();
+        for (const c of this.carrions) {
+            if (c.alive) this.carrionGrid.insert(c.x, c.y, c);
         }
     }
 
@@ -346,8 +371,11 @@ export class World {
         const s = e.species;
         const dist = sense ? Math.min(1, sense.dist / s.senseRange) : 1;
         // Herbivores also sense the nearest carnivore so they can evolve flight.
+        // Carnivores also sense the nearest carrion so they can evolve scavenging.
         let threatDx = 0;
         let threatDist = 1;
+        let carrionDx = 0;
+        let carrionDist = 1;
         if (s.kind === "herbivore") {
             const threats: Entity[] = [];
             this.grid.query(e.pos.x, e.pos.y, s.senseRange, threats);
@@ -363,6 +391,21 @@ export class World {
                     threatDist = Math.min(1, Math.sqrt(d2) / s.senseRange);
                 }
             }
+        } else {
+            const corpses: Carrion[] = [];
+            this.carrionGrid.query(e.pos.x, e.pos.y, s.senseRange, corpses);
+            let bestD2 = Infinity;
+            for (const c of corpses) {
+                if (!c.alive) continue;
+                const dx = c.x - e.pos.x;
+                const dy = c.y - e.pos.y;
+                const d2 = dx * dx + dy * dy;
+                if (d2 < bestD2) {
+                    bestD2 = d2;
+                    carrionDx = dx / s.senseRange;
+                    carrionDist = Math.min(1, Math.sqrt(d2) / s.senseRange);
+                }
+            }
         }
         return [
             Math.sin(e.angle),
@@ -373,6 +416,7 @@ export class World {
             Math.min(1, e.energy / s.maxEnergy),
             threatDx,
             threatDist,
+            s.kind === "herbivore" ? 0 : carrionDx,
         ];
     }
 
@@ -435,6 +479,19 @@ export class World {
                 e.foodEaten++;
                 e.memory.record(inputs, 0, gained, e.age);
             }
+        }
+        // Scavenging: carrion is free energy with no hunt risk (rule 6).
+        const corpses: Carrion[] = [];
+        this.carrionGrid.query(e.pos.x, e.pos.y, s.eatRadius, corpses);
+        for (const c of corpses) {
+            if (!c.alive) continue;
+            const gained = c.energy;
+            c.alive = false;
+            e.energy = Math.min(s.maxEnergy, e.energy + gained);
+            e.fitness += gained;
+            e.foodEaten++;
+            e.memory.record(inputs, 0, gained, e.age);
+            break;
         }
     }
 
@@ -499,6 +556,16 @@ export class World {
         if (!e.alive) return;
         e.alive = false;
         this.deaths[e.species.kind]++;
+        // The body stays behind with its remaining energy (rule 6: carrion).
+        if (e.energy > 0) {
+            this.carrions.push({
+                id: this.nextId++,
+                x: e.pos.x,
+                y: e.pos.y,
+                energy: e.energy,
+                alive: true,
+            });
+        }
     }
 
     // ---------------------------------------------------------------------
