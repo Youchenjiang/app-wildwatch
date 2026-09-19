@@ -6,9 +6,10 @@
  * probe (tests/balance-probe.test.ts) must derive their config from here
  * so a validated seeding can never drift out of the validated envelope.
  *
- * Validated by tests/balance-probe.test.ts: sustains both species for
- * 30,000+ ticks under terminal-extinction rules, with the carrion cycle
- * active. Re-validate whenever an ecosystem mechanic changes.
+ * Validated by tests/balance-probe.test.ts under the local-frame sensory
+ * encoding (rule 8): sustains both species for 30,000+ ticks under
+ * terminal-extinction rules with the carrion cycle active. Re-validate
+ * whenever an ecosystem mechanic changes.
  */
 import { DEFAULT_BRAIN_SPEC, type WorldConfig } from "./world";
 
@@ -20,9 +21,9 @@ export function makeSeeding(seed = 20260907): WorldConfig {
         herbivoreCount: 60,
         carnivoreCount: 4,
         plantCount: 240,
-        plantRegrowPerTick: 1,
+        plantRegrowPerTick: 2,
         plantEnergy: 18,
-        maxPlants: 320,
+        maxPlants: 500,
         turnLength: 100,
         populationCap: 500,
         mateRange: 3,
