@@ -1,5 +1,6 @@
 import type { Brain } from "./brain";
 import type { SpeciesParams, Vec2 } from "./types";
+import type { Memory } from "./memory";
 
 /** An individual NPC. Brain weights are the evolvable genome. */
 export class Entity {
@@ -17,6 +18,9 @@ export class Entity {
     /** Lineage: [direct parent id, that parent's own parent id (or itself)]. */
     parentIds: readonly [number, number] | null = null;
 
+    /** Episodic memory: rewarding events bias later behavior within a lifetime. */
+    memory: Memory;
+
     constructor(
         readonly species: SpeciesParams,
         readonly pos: Vec2,
@@ -24,9 +28,11 @@ export class Entity {
         readonly brain: Brain,
         id: number,
         energy: number,
+        memory: Memory,
     ) {
         this.angle = angle;
         this.id = id;
         this.energy = energy;
+        this.memory = memory;
     }
 }
