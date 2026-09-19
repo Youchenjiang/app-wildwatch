@@ -10,6 +10,8 @@ export class Entity {
     angle: number;
     alive = true;
     foodEaten = 0;
+    /** Lifetime food energy gained — the fitness metric natural selection acts on. */
+    fitness = 0;
     /** Lineage: [direct parent id, that parent's own parent id (or itself)]. */
     parentIds: readonly [number, number] | null = null;
 

@@ -30,6 +30,8 @@ export interface TurnRecord {
     deaths: Record<SpeciesKind, number>;
     /** Average per-weight stddev across the population (cheap diversity proxy). */
     geneDiversity: Record<SpeciesKind, number>;
+    avgFitness: Record<SpeciesKind, number>;
+    maxFitness: Record<SpeciesKind, number>;
 }
 
 export interface WorldConfig {
@@ -301,6 +303,7 @@ export class World {
             if (found) {
                 found.item.alive = false;
                 e.energy += found.item.energy;
+                e.fitness += found.item.energy;
                 e.foodEaten++;
             }
             return;
@@ -314,7 +317,9 @@ export class World {
         if (found) {
             const meat = found.item.energy;
             this.kill(found.item, "preyed");
-            e.energy += meat * 0.6 + s.foodEnergy;
+            const gained = meat * 0.6 + s.foodEnergy;
+            e.energy += gained;
+            e.fitness += gained;
             e.foodEaten++;
         }
     }
@@ -374,6 +379,8 @@ export class World {
             births: { ...this.births },
             deaths: { ...this.deaths },
             geneDiversity: EMPTY_COUNTS(),
+            avgFitness: EMPTY_COUNTS(),
+            maxFitness: EMPTY_COUNTS(),
         };
         for (const kind of KINDS) {
             const pop = this.entities.filter((e) => e.alive && e.species.kind === kind);
@@ -385,6 +392,12 @@ export class World {
                 ? pop.reduce((sum, e) => sum + e.generation, 0) / pop.length
                 : 0;
             record.geneDiversity[kind] = this.geneDiversity(kind);
+            record.avgFitness[kind] = pop.length
+                ? pop.reduce((sum, e) => sum + e.fitness, 0) / pop.length
+                : 0;
+            record.maxFitness[kind] = pop.length
+                ? Math.max(...pop.map((e) => e.fitness))
+                : 0;
         }
         this.records.push(record);
         this.turn++;
