@@ -8,7 +8,7 @@ import { createMemory, type Memory } from "./memory";
 import { LifeGrid } from "./learning";
 
 export const DEFAULT_BRAIN_SPEC: BrainSpec = {
-    inputSize: 9,
+    inputSize: 11,
     hiddenSize: 5,
     outputSize: 2,
 };
@@ -336,6 +336,7 @@ export class World {
         const steer = out[0];
         const thrust = (out[1] + 1) / 2;
 
+        const steerMag = Math.abs(steer);
         e.angle += steer * s.maxTurn;
         const speed = s.speed * (0.2 + 0.8 * thrust);
         e.pos.x += Math.cos(e.angle) * speed;
@@ -344,7 +345,10 @@ export class World {
         // so animals slide off walls instead of pinning against them.
         this.bounceOffWalls(e);
 
-        e.energy -= s.moveCost * (0.3 + 0.7 * thrust);
+        // Turning is biomechanically expensive: sharp sustained steering
+        // (spiraling) burns energy far faster than purposeful travel.
+        const turnPenalty = 1 + s.turnCost * steerMag * steerMag * (0.3 + 0.7 * thrust);
+        e.energy -= s.moveCost * (0.3 + 0.7 * thrust) * turnPenalty;
 
         this.tryEat(e, inputs);
 
@@ -415,7 +419,7 @@ export class World {
     }
 
     /** Nearest live carnivore within sense range (herbivore threat sense). */
-    private nearestThreat(e: Entity): { dx: number; d2: number } | null {
+    private nearestThreat(e: Entity): { dx: number; dy: number; d2: number } | null {
         const s = e.species;
         const found = this.nearest(
             this.queryEntities(e.pos, s.senseRange),
@@ -423,11 +427,11 @@ export class World {
             (other) => other.pos,
             e.pos,
         );
-        return found ? { dx: found.dx, d2: found.d2 } : null;
+        return found ? { dx: found.dx, dy: found.dy, d2: found.d2 } : null;
     }
 
     /** Nearest live carrion within sense range (carnivore scavenging sense). */
-    private nearestCarrion(e: Entity): { dx: number; d2: number } | null {
+    private nearestCarrion(e: Entity): { dx: number; dy: number; d2: number } | null {
         const s = e.species;
         const found = this.nearest(
             this.queryCarrion(e.pos, s.senseRange),
@@ -435,38 +439,68 @@ export class World {
             (c) => c,
             e.pos,
         );
-        return found ? { dx: found.dx, d2: found.d2 } : null;
+        return found ? { dx: found.dx, dy: found.dy, d2: found.d2 } : null;
     }
 
+    /**
+     * Rule 8: target directions are encoded in the animal's own frame
+     * (right/forward components) so "steer toward food" is a linear
+     * function of the inputs. The old world-frame (dx, dy) encoding required
+     * brains to learn a rotation internally, which evolution never solved —
+     * the population converged on constant-curvature circling instead.
+     */
     private buildInputs(e: Entity, sense: Sense | null): number[] {
         const s = e.species;
-        const dist = sense ? Math.min(1, sense.dist / s.senseRange) : 1;
+        const range = s.senseRange;
+        const cosA = Math.cos(e.angle);
+        const sinA = Math.sin(e.angle);
+        const toLocal = (dx: number, dy: number): [number, number] => [
+            (-dx * sinA + dy * cosA) / range, // right component
+            (dx * cosA + dy * sinA) / range, // forward component
+        ];
+
+        const [foodRight, foodFwd] = sense ? toLocal(sense.dx, sense.dy) : [0, 0];
+        const foodDist = sense ? Math.min(1, sense.dist / range) : 1;
+
         // Herbivores sense the nearest carnivore so they can evolve flight;
         // carnivores sense the nearest carrion so they can evolve scavenging.
         const isHerbivore = s.kind === "herbivore";
         const threat = isHerbivore ? this.nearestThreat(e) : null;
         const carrion = isHerbivore ? null : this.nearestCarrion(e);
+
+        const [threatRight, threatFwd] = threat ? toLocal(threat.dx, threat.dy) : [0, 0];
+        const threatDist = threat ? Math.min(1, Math.sqrt(threat.d2) / range) : 1;
+        const [carrionRight, carrionFwd] = carrion ? toLocal(carrion.dx, carrion.dy) : [0, 0];
+        const carrionDist = carrion ? Math.min(1, Math.sqrt(carrion.d2) / range) : 1;
+
+        // Input 10 (recallHint) is filled by brainForwardWithRecall; it is 0
+        // without a strong episodic match.
         return [
-            Math.sin(e.angle),
-            Math.cos(e.angle),
-            sense ? sense.dx / s.senseRange : 0,
-            sense ? sense.dy / s.senseRange : 0,
-            dist,
+            foodRight,
+            foodFwd,
+            foodDist,
             Math.min(1, e.energy / s.maxEnergy),
-            threat ? threat.dx / s.senseRange : 0,
-            threat ? Math.min(1, Math.sqrt(threat.d2) / s.senseRange) : 1,
-            carrion ? carrion.dx / s.senseRange : 0,
+            threatRight,
+            threatFwd,
+            threatDist,
+            carrionRight,
+            carrionFwd,
+            carrionDist,
+            0,
         ];
     }
 
-    /** Forward the brain with a small episodic-recall bias on the inputs. */
+    /**
+     * Forward the brain with a small episodic-recall hint on its own input
+     * slot. The hint must never touch the sensory inputs: it used to be
+     * blended into input 0, which is now the food-direction signal, and
+     * corrupted steering.
+     */
     private brainForwardWithRecall(e: Entity, inputs: readonly number[]): Float32Array {
         const best = e.memory.recall(inputs, 1)[0];
         if (best && best.similarity > 0.5) {
-            // Blend a small fraction of the remembered action hint as an
-            // extra input so the brain can learn to trust familiar situations.
             const hint = Array.from(inputs);
-            hint[0] += (best.episode.actionHint * 0.15) * (1 - best.similarity);
+            hint[10] = best.episode.actionHint * 0.3 * (1 - best.similarity);
             return e.brain.forward(hint);
         }
         return e.brain.forward(inputs);

@@ -22,6 +22,12 @@ export interface SpeciesParams {
     eatRadius: number;
     /** Energy consumed per unit of movement. */
     moveCost: number;
+    /**
+     * Biomechanical cost of turning: at full steer, movement energy is
+     * multiplied by (1 + turnCost). Spinning in place is expensive, so
+     * selection favors purposeful, straighter travel.
+     */
+    turnCost: number;
     /** Energy cap; used for normalization only. */
     maxEnergy: number;
     /** Reproduce once energy is at or above this threshold. */
