@@ -33,4 +33,31 @@ describe("Brain", () => {
         clone.w1[0] = 99;
         expect(brain.w1[0]).not.toBe(99);
     });
+
+    it("crossover mixes weights from both parents", () => {
+        const a = Brain.random(SPEC, mulberry32(11));
+        const b = Brain.random(SPEC, mulberry32(22));
+        const child = a.crossover(b, mulberry32(33));
+        expect(child.spec).toBe(SPEC);
+        expect(child.w1).toHaveLength(SPEC.inputSize * SPEC.hiddenSize);
+
+        let fromA = 0;
+        let fromB = 0;
+        for (let i = 0; i < child.w1.length; i++) {
+            if (child.w1[i] === a.w1[i]) fromA++;
+            if (child.w1[i] === b.w1[i]) fromB++;
+        }
+        expect(fromA).toBeGreaterThan(0);
+        expect(fromB).toBeGreaterThan(0);
+    });
+
+    it("crossover leaves both parents untouched", () => {
+        const a = Brain.random(SPEC, mulberry32(44));
+        const b = Brain.random(SPEC, mulberry32(55));
+        const beforeA = Array.from(a.w1);
+        const beforeB = Array.from(b.w1);
+        a.crossover(b, mulberry32(66));
+        expect(Array.from(a.w1)).toEqual(beforeA);
+        expect(Array.from(b.w1)).toEqual(beforeB);
+    });
 });
