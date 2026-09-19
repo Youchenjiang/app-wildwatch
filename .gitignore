@@ -1,0 +1,29 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+
+# Dependencies and build outputs
+node_modules/
+dist/
+build/
+coverage/
+playwright-report/
+test-results/
+.turbo/
+.vite/
+tmp/
+*.tsbuildinfo
+
+# Logs and OS files
+*.log
+Thumbs.db
+.DS_Store
+
+# ZAP scan reports
+zap-reports/
+zap.yaml
+
+# Freebuff app metadata (managed by the Freebuff desktop app, not the repo)
+.freebuff/
+
