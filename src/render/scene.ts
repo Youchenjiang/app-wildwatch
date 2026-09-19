@@ -30,10 +30,15 @@ export function createRenderContext(
     camera.position.set(worldWidth / 2 - 42, 118, worldHeight / 2 + 42);
     camera.lookAt(worldWidth / 2, 0, worldHeight / 2);
 
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x3a5a3f, 1.1));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.3);
-    sun.position.set(60, 120, 40);
+    scene.fog = new THREE.Fog(0x0c140e, 150, 320);
+
+    scene.add(new THREE.HemisphereLight(0xcfe8d4, 0x1c2a20, 0.9));
+    const sun = new THREE.DirectionalLight(0xfff3d6, 1.6);
+    sun.position.set(-50, 130, 30);
     scene.add(sun);
+
+    // Void beyond the world plate + soft ground shading.
+    scene.background = new THREE.Color(0x0c140e);
 
     const ground = new THREE.Mesh(
         new THREE.PlaneGeometry(worldWidth, worldHeight),
@@ -46,6 +51,25 @@ export function createRenderContext(
     const grid = new THREE.GridHelper(Math.max(worldWidth, worldHeight), 24, 0x3f5a42, 0x364a38);
     grid.position.set(worldWidth / 2, 0.02, worldHeight / 2);
     scene.add(grid);
+
+    // Boundary wall marks the closed world (rule 7) so the playfield edge reads clearly.
+    const wallHeight = 3;
+    const wallMaterial = new THREE.MeshLambertMaterial({
+        color: 0x4a6a52,
+        transparent: true,
+        opacity: 0.35,
+    });
+    const edges: Array<[number, number, number, number]> = [
+        [0, 0, worldWidth, 0.4],
+        [0, worldHeight, worldWidth, 0.4],
+        [0, 0, 0.4, worldHeight],
+        [worldWidth, 0, 0.4, worldHeight],
+    ];
+    for (const [x, z, w, d] of edges) {
+        const wall = new THREE.Mesh(new THREE.BoxGeometry(w, wallHeight, d), wallMaterial);
+        wall.position.set(x + w / 2, wallHeight / 2, z + d / 2);
+        scene.add(wall);
+    }
 
     return { renderer, scene, camera, view };
 }
