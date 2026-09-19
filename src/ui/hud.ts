@@ -34,7 +34,7 @@ export function createHud(container: HTMLElement): Hud {
                         kind
                     ].toFixed(1)} · 生 ${record.births[kind]} 死 ${record.deaths[kind]} · 多樣性 ${record.geneDiversity[
                         kind
-                    ].toFixed(3)}`;
+                    ].toFixed(3)} · 最佳適配度 ${record.maxFitness[kind].toFixed(0)}`;
                 statsEl.replaceChildren(
                     `🌿 ${line("herbivore")}`,
                     document.createElement("br"),
