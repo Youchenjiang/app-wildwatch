@@ -207,6 +207,37 @@ export class World {
         };
     }
 
+    /**
+     * Rule 7: reflect an entity's heading off a wall it has crossed, with a
+     * little jitter so crowds do not march in lockstep. Without this, animals
+     * pin against walls (position clamped, heading unchanged) and pile up at
+     * edges and corners.
+     */
+    private bounceOffWalls(e: Entity): void {
+        const m = 0.5;
+        let bounced = false;
+        if (e.pos.x <= m || e.pos.x >= this.config.width - m) {
+            e.angle = Math.PI - e.angle + randRange(this.rng, -0.3, 0.3);
+            bounced = true;
+        }
+        if (e.pos.y <= m || e.pos.y >= this.config.height - m) {
+            e.angle = -e.angle + randRange(this.rng, -0.3, 0.3);
+            bounced = true;
+        }
+        const clamped = this.clampPos(e.pos);
+        e.pos.x = clamped.x;
+        e.pos.y = clamped.y;
+        if (bounced) {
+            // Step the entity back inward along its new heading so it does
+            // not re-trigger the bounce on the next tick.
+            e.pos.x += Math.cos(e.angle) * 0.5;
+            e.pos.y += Math.sin(e.angle) * 0.5;
+            const inner = this.clampPos(e.pos);
+            e.pos.x = inner.x;
+            e.pos.y = inner.y;
+        }
+    }
+
     // ---------------------------------------------------------------------
     // Main loop
     // ---------------------------------------------------------------------
@@ -299,9 +330,9 @@ export class World {
         const speed = s.speed * (0.2 + 0.8 * thrust);
         e.pos.x += Math.cos(e.angle) * speed;
         e.pos.y += Math.sin(e.angle) * speed;
-        const clamped = this.clampPos(e.pos);
-        e.pos.x = clamped.x;
-        e.pos.y = clamped.y;
+        // Closed world: hitting a boundary is a physical bounce (rule 7),
+        // so animals slide off walls instead of pinning against them.
+        this.bounceOffWalls(e);
 
         e.energy -= s.moveCost * (0.3 + 0.7 * thrust);
 
