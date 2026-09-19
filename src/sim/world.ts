@@ -43,6 +43,8 @@ export interface TurnRecord {
     geneDiversity: Record<SpeciesKind, number>;
     avgFitness: Record<SpeciesKind, number>;
     maxFitness: Record<SpeciesKind, number>;
+    /** Alive plants at snapshot time — the resource baseline for charts. */
+    plantCount: number;
 }
 
 export interface WorldConfig {
@@ -634,6 +636,7 @@ export class World {
             geneDiversity: EMPTY_COUNTS(),
             avgFitness: EMPTY_COUNTS(),
             maxFitness: EMPTY_COUNTS(),
+            plantCount: 0,
         };
         for (const kind of KINDS) {
             const pop = this.entities.filter((e) => e.alive && e.species.kind === kind);
@@ -652,6 +655,7 @@ export class World {
                 ? Math.max(...pop.map((e) => e.fitness))
                 : 0;
         }
+        record.plantCount = this.plants.filter((p) => p.alive).length;
         this.records.push(record);
         this.turn++;
         this.lifeGrid.decay(
