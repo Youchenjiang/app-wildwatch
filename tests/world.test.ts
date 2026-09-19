@@ -63,6 +63,15 @@ describe("World", () => {
         }
     });
 
+    it("records fitness statistics in snapshots", () => {
+        const world = new World(makeConfig(21));
+        for (let i = 0; i < 300; i++) world.tickStep();
+        for (const record of world.records) {
+            expect(Number.isFinite(record.avgFitness.herbivore)).toBe(true);
+            expect(record.maxFitness.carnivore).toBeGreaterThanOrEqual(0);
+        }
+    });
+
     it("reproduces: births are recorded", () => {
         // No carnivores: herbivores should reproduce early and often.
         const world = new World(makeConfig(5, { carnivoreCount: 0 }));
