@@ -11,12 +11,12 @@ function makeConfig(): WorldConfig {
         width: 120,
         height: 120,
         seed: 20260907,
-        herbivoreCount: 60,
-        carnivoreCount: 16,
-        plantCount: 240,
-        plantRegrowPerTick: 4,
-        plantEnergy: 18,
-        maxPlants: 600,
+        herbivoreCount: 50,
+        carnivoreCount: 4,
+        plantCount: 260,
+        plantRegrowPerTick: 2,
+        plantEnergy: 20,
+        maxPlants: 320,
         turnLength: 100,
         populationCap: 500,
         mateRange: 3,
@@ -54,8 +54,11 @@ window.addEventListener("keydown", (event) => {
 });
 
 function frame(): void {
-    if (!paused) {
-        for (let i = 0; i < ticksPerFrame; i++) world.tickStep();
+    if (!paused && world.gameOver === null) {
+        for (let i = 0; i < ticksPerFrame; i++) {
+            if (world.gameOver !== null) break;
+            world.tickStep();
+        }
     }
     pool.sync(world.entities, world.plants);
     ctx.renderer.render(ctx.scene, ctx.camera);
