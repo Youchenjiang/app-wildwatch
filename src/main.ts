@@ -37,7 +37,7 @@ function frame(): void {
             world.tickStep();
         }
     }
-    pool.sync(world.entities, world.plants);
+    pool.sync(world.entities, world.plants, world.carrions);
     ctx.renderer.render(ctx.scene, ctx.camera);
     hud.update(world);
     requestAnimationFrame(frame);
