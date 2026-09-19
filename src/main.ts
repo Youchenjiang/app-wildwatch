@@ -1,36 +1,13 @@
 import "./style.css";
-import { DEFAULT_BRAIN_SPEC, World, type WorldConfig } from "./sim/world";
+import { World } from "./sim/world";
+import { makeSeeding } from "./sim/seeding";
 import { createRenderContext, resizeContext } from "./render/scene";
 import { MeshPool } from "./render/meshes";
 import { createHud } from "./ui/hud";
 
 const container = document.getElementById("app")!;
 
-function makeConfig(): WorldConfig {
-    return {
-        width: 120,
-        height: 120,
-        seed: 20260907,
-        herbivoreCount: 50,
-        carnivoreCount: 4,
-        plantCount: 260,
-        plantRegrowPerTick: 2,
-        plantEnergy: 20,
-        maxPlants: 320,
-        turnLength: 100,
-        populationCap: 500,
-        mateRange: 3,
-    mutationRate: 0.06,
-    mutationSigma: 0.35,
-    brainSpec: DEFAULT_BRAIN_SPEC,
-    memoryCapacity: 64,
-    lifeGridCellsize: 6,
-    lifeGridDecay: 0.05,
-    lifeGridCap: 20,
-};
-}
-
-let world = new World(makeConfig());
+let world = new World(makeSeeding());
 const ctx = createRenderContext(container, world.config.width, world.config.height);
 const pool = new MeshPool(ctx.scene);
 const hud = createHud(container);
@@ -47,7 +24,7 @@ window.addEventListener("keydown", (event) => {
     } else if (event.key === "-" || event.key === "_") {
         ticksPerFrame = Math.max(1, ticksPerFrame - 5);
     } else if (event.key === "r" || event.key === "R") {
-        world = new World(makeConfig());
+        world = new World(makeSeeding());
         pool.reset();
         (window as unknown as { world?: World }).world = world;
     }
