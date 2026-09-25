@@ -1,7 +1,52 @@
 import { describe, expect, it } from "vitest";
-import { GAIT_HOP, GAIT_REFERENCE_TRAVEL, GAIT_SQUASH, gaitPose, nextGait } from "../src/render/meshes";
+import {
+    GAIT_HOP,
+    GAIT_REFERENCE_TRAVEL,
+    GAIT_SQUASH,
+    gaitDeform,
+    gaitPose,
+    nextGait,
+} from "../src/render/meshes";
 
 describe("animal gait", () => {
+    it("deforms nothing when the animal is not striding", () => {
+        for (const wave of [-1, -0.5, 0, 0.5, 1]) {
+            const d = gaitDeform(0, wave);
+            expect([d.x, d.y, d.z]).toEqual([1, 1, 1]);
+        }
+        // Nor at the top and bottom of the wave, where the deform crosses zero.
+        expect(gaitDeform(1, 0)).toEqual({ x: 1, y: 1, z: 1 });
+    });
+
+    it("is the shape the body's pose is built from", () => {
+        for (const base of [0.5, 1, 2]) {
+            for (const wave of [-1, -0.3, 0, 0.4, 1]) {
+                const d = gaitDeform(1, wave);
+                const p = gaitPose(base, 1, wave);
+                expect(p.sx).toBeCloseTo(base * d.x, 12);
+                expect(p.sy).toBeCloseTo(base * d.y, 12);
+                expect(p.sz).toBeCloseTo(base * d.z, 12);
+            }
+        }
+    });
+
+    it("keeps the stride's deform to the body: the rig's inverse restores the size", () => {
+        // What the pool draws: the body takes `gaitPose`, the rigid feature rig
+        // takes whatever cancels it. Every axis has to land back on the
+        // animal's own size, or the snout and the ears would come out distorted.
+        const base = 1.4;
+        for (const gait of [0, 0.4, 1]) {
+            for (const wave of [-1, -0.4, 0, 0.6, 1]) {
+                const d = gaitDeform(gait, wave);
+                const body = gaitPose(base, gait, wave);
+                const rig = { x: 1 / d.x, y: 1 / d.y, z: 1 / d.z };
+                expect(body.sx * rig.x, "across").toBeCloseTo(base, 12);
+                expect(body.sy * rig.y, "up").toBeCloseTo(base, 12);
+                expect(body.sz * rig.z, "along").toBeCloseTo(base, 12);
+            }
+        }
+    });
+
     it("holds a clean, uniform pose when standing still", () => {
         const pose = gaitPose(1, 0, 1);
         expect(pose.sy).toBeCloseTo(1, 10);

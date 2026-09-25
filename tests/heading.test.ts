@@ -20,11 +20,19 @@ function snoutTip(geometry: THREE.BufferGeometry): THREE.Vector3 {
     return tip;
 }
 
-/** Where a mesh's snout actually lands, in scene (x, z), as drawn. */
+/**
+ * Where a mesh's snout actually lands, in scene (x, z), as drawn.
+ *
+ * The snout is part of the rigid feature rig, which is a child of the body, so
+ * the tip has to be read through that child's own matrix: it carries the
+ * heading and whatever stride the body has, and holds the snout rigid against
+ * it.
+ */
 function drawnSnout(pool: MeshPool, entity: Entity): { x: number; z: number; length: number } {
     const mesh = pool["npcMeshes"].get(entity.id)!;
     mesh.updateMatrixWorld(true);
-    const tip = snoutTip(mesh.geometry).applyMatrix4(mesh.matrixWorld).sub(mesh.position);
+    const rig = mesh.children[0] as THREE.Mesh;
+    const tip = snoutTip(rig.geometry).applyMatrix4(rig.matrixWorld).sub(mesh.position);
     return { x: tip.x, z: tip.z, length: Math.hypot(tip.x, tip.z) };
 }
 
