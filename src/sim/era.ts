@@ -109,7 +109,7 @@ export const iceAgeEra: EraConfig = {
         speed: 2.2,
         maxTurn: 1.0,
         senseRange: 18,
-        eatRadius: 1.0,
+        eatRadius: 3,
         moveCost: 0.06,
         maxEnergy: 90,
         reproduceEnergy: 80,
@@ -122,7 +122,7 @@ export const iceAgeEra: EraConfig = {
         speed: 1.9,
         maxTurn: 1.2,
         senseRange: 12,
-        eatRadius: 1.3,
+        eatRadius: 4,
         reproduceEnergy: 120,
         reproduceCost: 100,
         maxAge: 1100,
@@ -154,6 +154,7 @@ export const desertEra: EraConfig = {
         speed: 2.2,
         maxTurn: 1.2,
         senseRange: 20,
+        eatRadius: 3,
         moveCost: 0.06,
         maxEnergy: 95,
         maxAge: 1500,
@@ -163,6 +164,13 @@ export const desertEra: EraConfig = {
         color: 0xb85a3a,
         speed: 1.9,
         senseRange: 14,
+        /**
+         * Longer than the grassland predator's 4: this world is sparse, so
+         * encounters are rarer and a hunt that only lands at point-blank range
+         * never pays for itself. Measured — at 4 the predator line starves out
+         * around tick 22,000 with the herbivores left at 78.
+         */
+        eatRadius: 5,
         moveCost: 0.16,
         reproduceEnergy: 120,
         reproduceCost: 100,

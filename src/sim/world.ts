@@ -200,9 +200,9 @@ export class World {
     tick = 0;
     turn = 0;
 
-    private readonly grid = new SpatialGrid<Entity>(10);
-    private readonly plantGrid = new SpatialGrid<Plant>(10);
-    private readonly carrionGrid = new SpatialGrid<Carrion>(10);
+    private readonly grid = new SpatialGrid<Entity>(10, (e) => e.pos);
+    private readonly plantGrid = new SpatialGrid<Plant>(10, (p) => p);
+    private readonly carrionGrid = new SpatialGrid<Carrion>(10, (c) => c);
     readonly lifeGrid: LifeGrid;
     private nextId = 1;
     private births: Record<SpeciesKind, number> = EMPTY_COUNTS();

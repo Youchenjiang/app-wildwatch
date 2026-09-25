@@ -10,7 +10,10 @@
  * encoding (rule 8), the carrion cycle, seasonal vegetation (rule 9) and the
  * turn-energy cost: every candidate in the sweep sustains both species for
  * the full 30,000-tick horizon (the locked seeding itself finishes at
- * h=31 c=41). Each era carries its own validated starting counts
+ * h=28 c=49). That baseline moved deliberately when sensing and eating reach
+ * became true distances rather than grid-cell scans — at the old values a
+ * 1.1-unit eat radius reached about 10 units. Each era carries its own
+ * validated starting counts
  * (EraConfig.seeding) so a run seeded from an era never drifts out of the
  * envelope that era was tuned in. Re-validate whenever an ecosystem mechanic
  * or era preset changes.
