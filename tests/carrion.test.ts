@@ -56,7 +56,15 @@ describe("carrion cycle", () => {
         const carn = world.entities[0]!;
         const before = carn.energy;
         // fromId is the animal the body used to be; 0 means an unrelated one.
-        world.carrions.push({ id: 9999, x: carn.pos.x, y: carn.pos.y, energy: 40, alive: true, fromId: 0 });
+        world.carrions.push({
+            id: 9999,
+            x: carn.pos.x,
+            y: carn.pos.y,
+            energy: 40,
+            alive: true,
+            fromId: 0,
+            fromGeneration: 1,
+        });
         world.tickStep();
         expect(carn.energy).toBeGreaterThan(before);
         expect(world.carrions).toHaveLength(0);

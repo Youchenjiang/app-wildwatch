@@ -95,7 +95,15 @@ describe("meal recording", () => {
     it("records a carnivore scavenging carrion, with the corpse it ate", () => {
         const world = new World(makeConfig({ herbivoreCount: 0, carnivoreCount: 1, plantCount: 0 }));
         const carn = world.entities[0];
-        const corpse = { id: 4242, x: carn.pos.x, y: carn.pos.y, energy: 33, alive: true, fromId: 777 };
+        const corpse = {
+            id: 4242,
+            x: carn.pos.x,
+            y: carn.pos.y,
+            energy: 33,
+            alive: true,
+            fromId: 777,
+            fromGeneration: 12,
+        };
         world.carrions.push(corpse);
 
         world.tickStep();
@@ -105,8 +113,33 @@ describe("meal recording", () => {
         expect(eaten.energy).toBe(33);
         // The meal names the animal the body was, not the transient corpse id.
         expect(eaten.victimId).toBe(777);
+        // ...and reports its generation, exactly as a hunted kill does.
+        expect(eaten.victimGeneration).toBe(12);
         expect(eaten.kin).toBeUndefined();
         expect(carn.meals.counts()).toEqual({ plant: 0, prey: 0, carrion: 1 });
+    });
+
+    it("reports the generation of a corpse the sim actually produced", () => {
+        const world = new World(makeConfig({ herbivoreCount: 0, carnivoreCount: 2, plantCount: 0 }));
+        const eater = world.entities[0];
+        const victim = world.entities[1];
+        victim.generation = 42;
+        victim.energy = 50;
+        world["kill"](victim, "test");
+
+        const corpse = world.carrions[0];
+        expect(corpse.fromGeneration).toBe(42);
+        corpse.x = eater.pos.x;
+        corpse.y = eater.pos.y;
+        world.tickStep();
+
+        // A scavenged meal reports the body's generation just as a hunted kill
+        // does, so the inspector's generation column is never a dash for one
+        // and a number for the other.
+        const eaten = eater.meals.recent(1)[0];
+        expect(eaten.source).toBe("carrion");
+        expect(eaten.victimId).toBe(victim.id);
+        expect(eaten.victimGeneration).toBe(42);
     });
 
     it("records a kill as prey, carrying the victim's generation", () => {
