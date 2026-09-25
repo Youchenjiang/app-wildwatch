@@ -153,7 +153,7 @@ function frame(): void {
     observerCam.apply();
     ctx.renderer.render(ctx.scene, ctx.camera);
     controls.setPaused(paused);
-    controls.setReplayVisible(recorder.size > 0, recorder.size);
+    controls.setReplayVisible(replayIndexNow !== null, recorder.size);
     requestAnimationFrame(frame);
 }
 
