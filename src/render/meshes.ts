@@ -97,6 +97,64 @@ export function carrionPose(remaining: number) {
     return { width, height: width * (0.45 + 0.55 * r) };
 }
 
+/** Seconds a corpse takes to be pulled into the animal eating it. */
+export const FEED_DURATION = 0.28;
+/** Energy a corpse can lose to decay within a single drawn frame. The sim
+ * decays carrion at 0.05 energy/tick and the app never runs more than 60 ticks
+ * per frame, so 3 is the worst case; 4 leaves headroom.
+ *
+ * This is what distinguishes the two ways a corpse leaves the world, and it is
+ * causal rather than positional: carrion is only ever removed by being eaten
+ * or by decaying to zero, so a corpse last drawn above this budget *must* have
+ * been taken by a predator. Proximity could not decide it — at the default
+ * speed a predator travels ~17 world units per drawn frame, so by the time the
+ * renderer notices the missing corpse the eater is long gone. */
+export const CARRION_DECAY_BUDGET = 4;
+/** Fraction of its size a corpse shrinks to by the time it is swallowed. */
+const FEED_REMAINDER = 0.1;
+
+/**
+ * Pose for a corpse being eaten. `p` is 0..1 progress. Returns the eased
+ * progress — used to pull the morsel toward the eater — and the shrinking
+ * size. The ease-out makes the corpse get yanked in and then vanish.
+ */
+export function feedPose(fromWidth: number, fromHeight: number, p: number) {
+    const t = Math.min(1, Math.max(0, p));
+    const eased = 1 - (1 - t) * (1 - t);
+    const scale = 1 - (1 - FEED_REMAINDER) * eased;
+    return { width: fromWidth * scale, height: fromHeight * scale, eased };
+}
+
+/**
+ * Why a corpse left the sim. Carrion is removed in exactly two ways — eaten by
+ * a predator, or decayed to nothing — so the energy it was last drawn with
+ * decides which, and no guesswork about who was standing nearby is needed.
+ */
+export function carrionExit(energyWhenLastSeen: number): "eaten" | "decayed" {
+    return energyWhenLastSeen > CARRION_DECAY_BUDGET ? "eaten" : "decayed";
+}
+
+/** Where a corpse was last drawn, so a vanished one can still be animated. */
+interface CarrionSpot {
+    x: number;
+    y: number;
+    energy: number;
+    width: number;
+    height: number;
+}
+
+/** A corpse mesh kept on screen while a predator consumes it. */
+interface FeedingMeal {
+    startTime: number;
+    x: number;
+    y: number;
+    fromWidth: number;
+    fromHeight: number;
+    /** The animal eating it, or null if it was never seen being eaten. */
+    eaterId: number | null;
+    mesh: THREE.Mesh;
+}
+
 /** A mesh kept on screen for a moment after its animal died, collapsing. */
 interface CollapsingBody {
     startTime: number;
@@ -173,6 +231,13 @@ export class MeshPool {
     private readonly collapsing = new Map<number, CollapsingBody>();
     /** Energy each corpse was first drawn with, its reference "intact" mass. */
     private readonly carrionPeak = new Map<number, number>();
+    /** Corpses drawn this frame, keyed by id. Swapped with carrionPrev each
+     * frame so a corpse that left the sim can still be animated from where it
+     * was last seen. */
+    private carrionSeen = new Map<number, CarrionSpot>();
+    private carrionPrev = new Map<number, CarrionSpot>();
+    /** Corpses currently being pulled into the animal that ate them. */
+    private readonly feeding = new Map<number, FeedingMeal>();
     private readonly materials = new Map<number, THREE.MeshLambertMaterial>();
     /** Flat list of animal meshes with ids, rebuilt each sync, for click picking. */
     private pickList: Array<{ id: number; mesh: THREE.Mesh }> = [];
@@ -223,6 +288,7 @@ export class MeshPool {
             if (body.shadow) this.scene.remove(body.shadow);
         }
         for (const shadow of this.npcShadows.values()) this.scene.remove(shadow);
+        for (const meal of this.feeding.values()) this.scene.remove(meal.mesh);
         this.npcMeshes.clear();
         this.npcShadows.clear();
         this.plantMeshes.clear();
@@ -230,6 +296,9 @@ export class MeshPool {
         // Corpse ids restart with the new world, so stale reference masses
         // would otherwise describe the wrong bodies.
         this.carrionPeak.clear();
+        this.carrionSeen.clear();
+        this.carrionPrev.clear();
+        this.feeding.clear();
         this.collapsing.clear();
         this.lastPos.clear();
         this.gait.clear();
@@ -257,6 +326,7 @@ export class MeshPool {
         const seasonal = (world.config.plantSeasonLength ?? 0) > 0;
         this.syncSeason(seasonal ? world.seasonAbundance : null);
         this.syncCollapsing();
+        this.syncFeeding();
         this.syncSubjects({ entities: world.entities, plants: world.plants, carrions: world.carrions }, selectedId);
     }
 
@@ -269,6 +339,11 @@ export class MeshPool {
         this.syncNpcs(subjects.entities);
         this.syncPlants(subjects.plants);
         this.syncCarrions(subjects.carrions);
+        this.retireMissingCarrions(
+            subjects.entities
+                .filter((e) => e.alive && e.species.kind === "carnivore")
+                .map((e) => ({ id: e.id, x: e.pos.x, y: e.pos.y })),
+        );
     }
 
     /** Draw a recorded replay frame instead of the live world. */
@@ -280,6 +355,7 @@ export class MeshPool {
         this.animTime = animTime;
         this.selectedId = selectedId;
         this.syncCollapsing();
+        this.syncFeeding();
         // Replays carry their own season position: plants tint and size with
         // the historical tick (null means seasons were off — neutral look).
         this.syncSeason(frame.seasonAbundance);
@@ -294,6 +370,9 @@ export class MeshPool {
         this.syncNpcsFrame(npcLike);
         this.syncPlantsFrame(frame.plants);
         this.syncCarrionsFrame(frame.carrions);
+        this.retireMissingCarrions(
+            npcLike.filter((n) => n.kind === 1).map((n) => ({ id: n.id, x: n.x, y: n.y })),
+        );
     }
 
     // ------------------------------------------------------------------
@@ -522,22 +601,13 @@ export class MeshPool {
         const pose = carrionPose(peak > 0 ? energy / peak : 0);
         mesh.scale.set(pose.width, pose.height, pose.width);
         mesh.position.set(x, pose.height * 0.3, y);
-    }
-
-    private pruneCarrions(seen: Set<number>): void {
-        for (const [id, mesh] of this.carrionMeshes) {
-            if (seen.has(id)) continue;
-            this.scene.remove(mesh);
-            this.carrionMeshes.delete(id);
-            this.carrionPeak.delete(id);
-        }
+        this.carrionSeen.set(id, { x, y, energy, width: pose.width, height: pose.height });
     }
 
     private syncCarrions(carrions: Carrion[]): void {
-        const seenCarrion = new Set<number>();
+        this.carrionSeen.clear();
         for (const c of carrions) {
             if (!c.alive) continue;
-            seenCarrion.add(c.id);
             let mesh = this.carrionMeshes.get(c.id);
             if (!mesh) {
                 mesh = new THREE.Mesh(this.carrionGeometry, this.carrionMaterial);
@@ -546,14 +616,12 @@ export class MeshPool {
             }
             this.poseCarrion(mesh, c.id, c.x, c.y, c.energy);
         }
-        this.pruneCarrions(seenCarrion);
     }
 
     private syncCarrionsFrame(rows: number[][]): void {
-        const seen = new Set<number>();
+        this.carrionSeen.clear();
         for (const row of rows) {
             const id = row[0];
-            seen.add(id);
             let mesh = this.carrionMeshes.get(id);
             if (!mesh) {
                 mesh = new THREE.Mesh(this.carrionGeometry, this.carrionMaterial);
@@ -562,7 +630,77 @@ export class MeshPool {
             }
             this.poseCarrion(mesh, id, row[1], row[2], row[3]);
         }
-        this.pruneCarrions(seen);
+    }
+
+    /**
+     * A corpse that left the sim between frames must not simply blink out. One
+     * taken while it still had mass was eaten: keep the mesh and hand it to
+     * syncFeeding to be pulled into the predator. One that ran out of mass just
+     * finished decaying, and it has already deflated to nearly nothing, so it
+     * can go.
+     */
+    private retireMissingCarrions(carnivores: ReadonlyArray<{ id: number; x: number; y: number }>): void {
+        for (const [id, spot] of this.carrionPrev) {
+            if (this.carrionSeen.has(id)) continue;
+            const mesh = this.carrionMeshes.get(id);
+            this.carrionMeshes.delete(id);
+            this.carrionPeak.delete(id);
+            if (!mesh) continue;
+            if (carrionExit(spot.energy) === "decayed") {
+                this.scene.remove(mesh);
+                continue;
+            }
+            // Eaten. The corpse itself tells us so; aim the morsel at whichever
+            // predator is nearest where it lay, which is the eater unless the
+            // kill and a passing predator happened to coincide.
+            let eaterId: number | null = null;
+            let bestD2 = Infinity;
+            for (const c of carnivores) {
+                const d2 = (c.x - spot.x) ** 2 + (c.y - spot.y) ** 2;
+                if (d2 <= bestD2) {
+                    bestD2 = d2;
+                    eaterId = c.id;
+                }
+            }
+            this.feeding.set(id, {
+                startTime: this.animTime,
+                x: spot.x,
+                y: spot.y,
+                fromWidth: spot.width,
+                fromHeight: spot.height,
+                eaterId,
+                mesh,
+            });
+        }
+        // Swap buffers in place instead of copying every frame.
+        const stale = this.carrionPrev;
+        this.carrionPrev = this.carrionSeen;
+        this.carrionSeen = stale;
+    }
+
+    /** Pull each consumed corpse into the animal eating it, then drop it. The
+     * target is looked up live, so the morsel follows a moving predator. */
+    private syncFeeding(): void {
+        for (const [id, meal] of this.feeding) {
+            const p = (this.animTime - meal.startTime) / FEED_DURATION;
+            if (p >= 1) {
+                this.scene.remove(meal.mesh);
+                this.feeding.delete(id);
+                continue;
+            }
+            const pose = feedPose(meal.fromWidth, meal.fromHeight, p);
+            meal.mesh.scale.set(pose.width, pose.height, pose.width);
+            const eater = meal.eaterId === null ? undefined : this.npcMeshes.get(meal.eaterId);
+            const tx = eater ? eater.position.x : meal.x;
+            const tz = eater ? eater.position.z : meal.y;
+            const ty = eater ? eater.position.y : pose.height * 0.3;
+            // Sink to the ground when there is no eater to be pulled into.
+            meal.mesh.position.set(
+                meal.x + (tx - meal.x) * pose.eased,
+                pose.height * 0.3 + (ty - pose.height * 0.3) * pose.eased,
+                meal.y + (tz - meal.y) * pose.eased,
+            );
+        }
     }
 
     // ------------------------------------------------------------------
