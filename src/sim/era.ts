@@ -178,9 +178,15 @@ export const desertEra: EraConfig = {
          * Longer than the grassland predator's 4: this world is sparse, so
          * encounters are rarer and a hunt that only lands at point-blank range
          * never pays for itself. Measured — at 4 the predator line starves out
-         * around tick 22,000 with the herbivores left at 78.
+         * around tick 22,000 with the herbivores left at 78, and at 5 it starves
+         * out around tick 27,000 once an energy charge stops at zero instead of
+         * running below it. This preset always sat on a knife edge (at 5 it never
+         * held more than 3 predators), and the 0.1 of energy that clamp moved was
+         * enough to lose it. At 6 it survives the full 30,000 ticks with more
+         * room than it had before the clamp: never fewer than 8 herbivores or 4
+         * predators after the opening 3,000 ticks, where 5 left it at 3 and 3.
          */
-        eatRadius: 5,
+        eatRadius: 6,
         moveCost: 0.16,
         reproduceEnergy: 120,
         reproduceCost: 100,
