@@ -60,14 +60,6 @@ export function kinStatText(
     return `近親取食 ${kinMeals} · 佔腐食 ${pct}%${sides}`;
 }
 
-/**
- * Stat text for the reproduction breakdown.
- */
-export function birthModeText(sexual: number, asexual: number): string {
-    if (sexual + asexual === 0) return "繁殖 —";
-    return `繁殖 有性 ${sexual} · 無性 ${asexual}`;
-}
-
 /** What the game-over veil says, and whether it belongs on screen at all. */
 export interface GameOverVeil {
     hidden: boolean;
@@ -93,19 +85,6 @@ export function gameOverVeil(over: SpeciesKind | null, turn: number, tick: numbe
         title: `${name}族群滅絕`,
         sub: `本次訓練於回合 ${turn} 結束 · 共 ${tick} ticks<br>按 <kbd>R</kbd> 重新投放`,
     };
-}
-
-/**
- * How this run's births were made, so the seeding choice is visible in the run
- * rather than only in the config.
- *
- * The modes are meant to be mutually exclusive — a sexual run should show no
- * clonal births and an asexual run no sexual ones — so showing the split means
- * that is read off the run instead of assumed from the setting.
- */
-export function birthModeText(sexual: number, asexual: number): string {
-    if (sexual + asexual === 0) return "繁殖 —";
-    return `繁殖 有性 ${sexual} · 無性 ${asexual}`;
 }
 
 /**
@@ -197,7 +176,6 @@ function updateMetrics(
     barCarnEl: HTMLElement,
     metaHerbEl: Element,
     metaCarnEl: Element,
-    birthsEl: Element,
     kinEl: Element,
     lineageLeg: LineageLegendElements,
 ): void {
@@ -208,7 +186,6 @@ function updateMetrics(
         `均能 ${record.avgEnergy.herbivore.toFixed(0)} · 世代 ${record.avgGeneration.herbivore.toFixed(0)} · 生 ${record.births.herbivore} 死 ${record.deaths.herbivore}`;
     metaCarnEl.textContent =
         `均能 ${record.avgEnergy.carnivore.toFixed(0)} · 世代 ${record.avgGeneration.carnivore.toFixed(0)} · 生 ${record.births.carnivore} 死 ${record.deaths.carnivore}`;
-    birthsEl.textContent = birthModeText(record.sexualBirths, record.asexualBirths);
     kinEl.textContent = kinStatText(
         record.carrionMeals,
         record.kinMeals,
@@ -313,7 +290,6 @@ export function createHud(container: HTMLElement): Hud {
             </div>
         </div>
 
-        <div class="hud-stat" id="hud-births">繁殖 —</div>
         <div class="hud-stat" id="hud-kin">—</div>
 
         <div class="hud-chart">
@@ -369,6 +345,7 @@ export function createHud(container: HTMLElement): Hud {
     // The game-over veil is a sibling of the HUD, so its own children are
     // queried within overEl — querying the HUD would return null and crash
     // the frame loop the moment a run ends.
+<<<<<<< HEAD
     const queryOver = <T extends Element>(sel: string): T => {
         const found = overEl.querySelector<T>(sel);
         if (!found) throw new Error(`Missing HUD element: ${sel}`);
@@ -382,7 +359,6 @@ export function createHud(container: HTMLElement): Hud {
     const barCarnEl = queryHud<HTMLElement>("#bar-carn");
     const metaHerbEl = queryHud("#meta-herb");
     const metaCarnEl = queryHud("#meta-carn");
-    const birthsEl = queryHud("#hud-births");
     const kinEl = queryHud("#hud-kin");
     const tabPopEl = queryHud<HTMLElement>("#tab-pop");
     const tabLineageEl = queryHud<HTMLElement>("#tab-lineage");
@@ -442,7 +418,7 @@ export function createHud(container: HTMLElement): Hud {
             popHerbEl.textContent = String(counts.herb);
             popCarnEl.textContent = String(counts.carn);
 
-            updateMetrics(records.at(-1), barHerbEl, barCarnEl, metaHerbEl, metaCarnEl, birthsEl, kinEl, {
+            updateMetrics(records.at(-1), barHerbEl, barCarnEl, metaHerbEl, metaCarnEl, kinEl, {
                 depth: legDepthEl,
                 deepest: legDeepestEl,
                 kin: legKinEl,

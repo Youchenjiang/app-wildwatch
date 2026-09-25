@@ -73,11 +73,6 @@ export interface TurnRecord {
     maxFitness: Record<SpeciesKind, number>;
     /** Alive plants at snapshot time — the resource baseline for charts. */
     plantCount: number;
-    /** Cumulative births by how they were made. Kept apart so the mode choice is
-     * read off the run rather than assumed from the config: a sexual run must
-     * show zero clonal births, and an asexual one zero sexual births. */
-    sexualBirths: number;
-    asexualBirths: number;
     /** Mean and deepest recorded ancestry among the living, in generations
      * since the founders. How far back the population's forebears run. */
     livingMeanDepth: number;
@@ -939,8 +934,6 @@ export class World {
             avgFitness: EMPTY_COUNTS(),
             maxFitness: EMPTY_COUNTS(),
             plantCount: this.plants.filter((plant) => plant.alive).length,
-            sexualBirths: this.sexualBirthTotal,
-            asexualBirths: this.asexualBirthTotal,
             livingMeanDepth: 0,
             livingMaxDepth: 0,
             kinDensity: 0,
@@ -976,7 +969,15 @@ export class World {
         return this.gameOverBy;
     }
 
-    /** Cumulative births made with a partner, and by cloning. */
+    /**
+     * Cumulative births made with a partner, and by cloning.
+     *
+     * Not shown anywhere: the mode is locked at seeding and the two are meant
+     * to be mutually exclusive (a sexual run makes no clones at all, and an
+     * asexual run never mates), so a display of the split would only restate a
+     * setting the player already chose. They exist so the tests can hold that
+     * exclusivity to account rather than assuming it.
+     */
     get sexualBirths(): number {
         return this.sexualBirthTotal;
     }
