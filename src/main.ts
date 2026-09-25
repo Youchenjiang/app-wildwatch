@@ -2,7 +2,7 @@ import "./style.css";
 import * as THREE from "three";
 import { World } from "./sim/world";
 import { makeSeeding } from "./sim/seeding";
-import { createRenderContext, resizeContext, type RenderContext } from "./render/scene";
+import { createRenderContext, defaultAtmosphereColors, resizeContext, type RenderContext } from "./render/scene";
 import { MeshPool } from "./render/meshes";
 import { ObserverCamera } from "./render/camera";
 import { createHud } from "./ui/hud";
@@ -10,6 +10,8 @@ import { createControls } from "./ui/controls";
 import { createInspector } from "./ui/inspector";
 import { createWelcome } from "./ui/welcome";
 import { ReplayRecorder } from "./observe/replay";
+import { grasslandEra, iceAgeEra } from "./sim/era";
+
 import type { EraConfig } from "./sim/era";
 
 const container = document.getElementById("app")!;
@@ -73,10 +75,12 @@ let ticksPerFrame = 10;
 let paused = true;
 let replayIndex: number | null = null;
 
-// Welcome screen: pause until the player clicks start.
-createWelcome(container, () => {
+// Welcome screen: pick an era, then start.
+let selectedEra: import("./sim/era").EraConfig | undefined;
+createWelcome(container, (era) => {
+    selectedEra = era;
     paused = false;
-});
+}, [grasslandEra, iceAgeEra]);
 
 window.addEventListener("keydown", (event) => {
     if (event.code === "Space") {
@@ -123,7 +127,10 @@ ctx.renderer.domElement.addEventListener("pointerup", (e) => {
 });
 
 function restart(): void {
-    world = new World(makeSeeding());
+    world = new World(selectedEra ? makeSeeding(undefined, selectedEra) : makeSeeding());
+    ctx.atmosphere.setColors(eraAtmosphereColors(world.config.era) ?? defaultAtmosphereColors());
+
+    pool.setEra(world.config.era);
     recorder.reset();
     pool.reset();
     replayIndex = null;
