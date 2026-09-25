@@ -1,0 +1,25 @@
+import { describe, expect, it } from "vitest";
+import { kinStatText } from "../src/ui/hud";
+
+describe("kin feeding stat", () => {
+    it("shows a dash before any corpse has been eaten", () => {
+        expect(kinStatText(0, 0)).toBe("近親取食 —");
+    });
+
+    it("reports kin as a share of all corpse meals", () => {
+        expect(kinStatText(4, 1)).toBe("近親取食 1 · 佔腐食 25%");
+        expect(kinStatText(3, 0)).toBe("近親取食 0 · 佔腐食 0%");
+        expect(kinStatText(3, 3)).toBe("近親取食 3 · 佔腐食 100%");
+    });
+
+    it("names the direction only when the split accounts for the total", () => {
+        // Both sides given and they add up: say which way it ran.
+        expect(kinStatText(4, 1, 1, 0)).toBe("近親取食 1 · 佔腐食 25%（全為親代）");
+        expect(kinStatText(8, 3, 1, 2)).toBe("近親取食 3 · 佔腐食 38%（親代 1 · 子代 2）");
+        // A split that does not add up is not a breakdown of anything, so the
+        // stat stays silent about direction rather than guessing.
+        expect(kinStatText(4, 3, 1, 0)).toBe("近親取食 3 · 佔腐食 75%");
+        // ...and the same when there are no kin meals to break down at all.
+        expect(kinStatText(3, 0, 0, 0)).toBe("近親取食 0 · 佔腐食 0%");
+    });
+});
