@@ -1,4 +1,5 @@
 import "./style.css";
+import * as THREE from "three";
 import { World } from "./sim/world";
 import { makeSeeding } from "./sim/seeding";
 import { createRenderContext, resizeContext, type RenderContext } from "./render/scene";
@@ -9,12 +10,38 @@ import { createControls } from "./ui/controls";
 import { createInspector } from "./ui/inspector";
 import { createWelcome } from "./ui/welcome";
 import { ReplayRecorder } from "./observe/replay";
+import type { EraConfig } from "./sim/era";
 
 const container = document.getElementById("app")!;
 
+/** Map an optional era config to atmosphere colors for the render context. */
+function eraAtmosphereColors(era?: EraConfig): import("./render/scene").AtmosphereColors | undefined {
+    if (!era) return undefined;
+    return {
+        bgPeak: new THREE.Color(era.skyColor),
+        bgTrough: new THREE.Color(era.skyTroughColor),
+        hemiSkyPeak: new THREE.Color(era.skyColor),
+        hemiSkyTrough: new THREE.Color(era.skyTroughColor),
+        hemiGroundPeak: new THREE.Color(era.groundColor),
+        hemiGroundTrough: new THREE.Color(era.groundTroughColor),
+        sunPeak: new THREE.Color(era.skyColor),
+        sunTrough: new THREE.Color(era.skyTroughColor),
+        groundPeak: new THREE.Color(era.groundColor),
+        groundTrough: new THREE.Color(era.groundTroughColor),
+        wallPeak: new THREE.Color(era.groundColor),
+        wallTrough: new THREE.Color(era.groundTroughColor),
+    };
+}
+
+
 let world = new World(makeSeeding());
-let ctx: RenderContext = createRenderContext(container, world.config.width, world.config.height);
-const pool = new MeshPool(ctx.scene);
+let ctx: RenderContext = createRenderContext(
+    container,
+    world.config.width,
+    world.config.height,
+    eraAtmosphereColors(world.config.era),
+);
+const pool = new MeshPool(ctx.scene, world.config.era);
 const observerCam = new ObserverCamera(ctx.camera, ctx.renderer.domElement, world.config.width, world.config.height);
 const hud = createHud(container);
 const controls = createControls(container, {

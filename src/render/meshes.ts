@@ -3,6 +3,7 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { Entity } from "../sim/entity";
 import type { Carrion, Plant, World } from "../sim/world";
 import type { ReplayFrame } from "../observe/replay";
+import type { EraConfig } from "../sim/era";
 
 const HERB_COLOR = 0xd7f05a;
 const CARN_COLOR = 0xc84f4f;
@@ -22,6 +23,8 @@ export class MeshPool {
     private readonly plantMeshes = new Map<number, THREE.Mesh>();
     private readonly carrionMeshes = new Map<number, THREE.Mesh>();
     private readonly shadowMat: THREE.MeshBasicMaterial;
+    private readonly plantPeakColor: THREE.Color;
+    private readonly plantTroughColor: THREE.Color;
     /** Sphere body + small nose cone so heading stays readable from above. */
     private readonly npcGeometry = MeshPool.buildAnimalGeometry();
     private static buildAnimalGeometry(): THREE.BufferGeometry {
@@ -48,9 +51,6 @@ export class MeshPool {
     private readonly carrionGeometry = new THREE.SphereGeometry(0.65, 8, 6);
     private readonly plantMaterial = new THREE.MeshLambertMaterial({ color: 0x3fae5a });
     private readonly carrionMaterial = new THREE.MeshLambertMaterial({ color: 0x8a7a5c });
-    // Seasonal tint: plants lerp from dry brown (trough) to lush green (peak).
-    private readonly plantPeakColor = new THREE.Color(0x3fae5a);
-    private readonly plantTroughColor = new THREE.Color(0x9a7b4d);
     private plantSeasonScale = 1;
     private readonly materials = new Map<number, THREE.MeshLambertMaterial>();
     /** Flat list of animal meshes with ids, rebuilt each sync, for click picking. */
@@ -58,8 +58,11 @@ export class MeshPool {
     private readonly ring: THREE.Mesh;
     private selectedId: number | null = null;
 
-    constructor(scene: THREE.Scene) {
+    constructor(scene: THREE.Scene, era?: EraConfig) {
         this.scene = scene;
+        this.plantPeakColor = new THREE.Color(era?.plantPeakColor ?? 0x3fae5a);
+        this.plantTroughColor = new THREE.Color(era?.plantTroughColor ?? 0x9a7b4d);
+        this.plantMaterial.color.copy(this.plantPeakColor);
         const ringGeo = new THREE.RingGeometry(1.1, 1.45, 24);
         this.ring = new THREE.Mesh(
             ringGeo,
