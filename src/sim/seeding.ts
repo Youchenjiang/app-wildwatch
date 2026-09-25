@@ -10,21 +10,31 @@
  * encoding (rule 8), the carrion cycle, seasonal vegetation (rule 9) and the
  * turn-energy cost: every candidate in the sweep sustains both species for
  * the full 30,000-tick horizon (the locked seeding itself finishes at
- * h=31 c=41). Re-validate whenever an ecosystem mechanic changes.
+ * h=31 c=41). Each era carries its own validated starting counts
+ * (EraConfig.seeding) so a run seeded from an era never drifts out of the
+ * envelope that era was tuned in. Re-validate whenever an ecosystem mechanic
+ * or era preset changes.
  */
 import { DEFAULT_BRAIN_SPEC, type WorldConfig } from "./world";
-import { iceAgeEra } from "./era";
 import type { EraConfig } from "./era";
+
+/** Shared defaults for a run with no era (and for era fields left unset). */
+export const BASE_SEEDING = {
+    herbivoreCount: 60,
+    carnivoreCount: 3,
+    plantCount: 240,
+} as const;
 
 export function makeSeeding(seed = 20260907, era?: EraConfig): WorldConfig {
     const plant = era?.plants ?? {};
+    const counts = era?.seeding ?? {};
     return {
         width: 120,
         height: 120,
         seed,
-        herbivoreCount: 60,
-        carnivoreCount: 3,
-        plantCount: 240,
+        herbivoreCount: counts.herbivoreCount ?? BASE_SEEDING.herbivoreCount,
+        carnivoreCount: counts.carnivoreCount ?? BASE_SEEDING.carnivoreCount,
+        plantCount: counts.plantCount ?? BASE_SEEDING.plantCount,
         plantRegrowPerTick: plant.regrowPerTick ?? 1,
         plantEnergy: plant.energy ?? 18,
         maxPlants: plant.maxPlants ?? 500,
@@ -34,30 +44,8 @@ export function makeSeeding(seed = 20260907, era?: EraConfig): WorldConfig {
         mutationRate: 0.06,
         mutationSigma: 0.35,
         brainSpec: DEFAULT_BRAIN_SPEC,
-        plantSeasonLength: 3000,
-        plantSeasonDepth: 0.5,
+        plantSeasonLength: plant.seasonLength ?? 3000,
+        plantSeasonDepth: plant.seasonDepth ?? 0.5,
         era,
-    };
-}
-
-export function grasslandSeeding(seed = 20260907): WorldConfig {
-    return makeSeeding(seed, undefined);
-}
-
-export function iceAgeSeeding(seed = 20260907): WorldConfig {
-    return {
-        ...makeSeeding(seed, iceAgeEra),
-        carnivoreCount: 1,
-    };
-}
-
-/** Ice-age seeding tuned for the era's lower energy throughput: fewer
- * starting carnivores so herbivores can establish before predation ramps up. */
-export function iceAgeSeedingTuned(seed = 20260907): WorldConfig {
-    return {
-        ...iceAgeSeeding(seed),
-        carnivoreCount: 2,
-        herbivoreCount: 80,
-        plantCount: 280,
     };
 }

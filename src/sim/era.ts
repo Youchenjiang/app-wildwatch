@@ -15,12 +15,28 @@ import type { SpeciesParams } from "./types";
 export type SpeciesOverlay = Partial<SpeciesParams>;
 
 /** Per-era plant defaults (the seeding's plantRegrowPerTick / plantEnergy /
- * maxPlants can all be era-specific).
+ * maxPlants can all be era-specific). The vegetation cycle length and trough
+ * depth are era-specific too: a desert has long, deep droughts while a
+ * grassland breathes with a shallow, quicker season.
  */
 export interface PlantOverlay {
     regrowPerTick?: number;
     energy?: number;
     maxPlants?: number;
+    /** Ticks per seasonal plant cycle; 0 disables seasons. */
+    seasonLength?: number;
+    /** 0..1 seasonal trough depth: 1 starves plants fully. */
+    seasonDepth?: number;
+}
+
+/** Per-era starting population: an era's energy throughput determines how
+ * many founders it can support, so the counts belong to the era, not to a
+ * generic default. Values omitted fall back to the shared seeding defaults.
+ */
+export interface SeedingOverlay {
+    herbivoreCount?: number;
+    carnivoreCount?: number;
+    plantCount?: number;
 }
 
 /** A resolved era config: what the renderer, atmosphere and world construction
@@ -37,6 +53,8 @@ export interface EraConfig {
     herbivore: SpeciesParams;
     carnivore: SpeciesParams;
     plants: PlantOverlay;
+    /** Starting population chosen and validated for this era's throughput. */
+    seeding?: SeedingOverlay;
 }
 
 /** Merge a partial species overlay onto a base SpeciesParams, keeping every
@@ -99,7 +117,9 @@ export const grasslandEra: EraConfig = {
         maxAge: 1200,
         foodEnergy: 8,
     },
-    plants: { regrowPerTick: 1, energy: 18, maxPlants: 500 },
+    plants: { regrowPerTick: 1, energy: 18, maxPlants: 500, seasonLength: 3000, seasonDepth: 0.5 },
+    // The validated baseline seeding (see tests/balance-probe.test.ts).
+    seeding: { herbivoreCount: 60, carnivoreCount: 3, plantCount: 240 },
 };
 
 /** Ice age — cold, sparse, low energy throughput. Plants are scarcer and
@@ -149,5 +169,60 @@ export const iceAgeEra: EraConfig = {
         maxAge: 1100,
         foodEnergy: 9,
     },
-    plants: { regrowPerTick: 0.8, energy: 16, maxPlants: 420 },
+    // A slower, shallower cycle than grassland: in a glaciated world scarcity
+    // is steady rather than boom-and-bust, so the trough must not bite deeply
+    // enough to crash the herbivores (validated by the era balance sweep).
+    plants: { regrowPerTick: 0.8, energy: 16, maxPlants: 420, seasonLength: 3400, seasonDepth: 0.4 },
+    // One founder predator: three over-hunts the sparser prey base before the
+    // herbivores can establish (validated by the era balance sweep).
+    seeding: { carnivoreCount: 1 },
+};
+
+/** Desert — hot, sparse and feast-or-famine. Plants are rare and low-yield on
+ * average but each one is energy-dense, so herbivores must range far and
+ * endure long droughts between blooms; carnivores are lean endurance runners.
+ */
+export const desertEra: EraConfig = {
+    name: "Desert",
+    groundColor: 0xbb9a63,
+    groundTroughColor: 0x8a7a5c,
+    skyColor: 0x3a2a1a,
+    skyTroughColor: 0xa08e6e,
+    plantPeakColor: 0x8fae52,
+    plantTroughColor: 0x9a8544,
+    herbivore: {
+        kind: "herbivore",
+        name: "Herbivore",
+        color: 0xe8d27a,
+        speed: 2.2,
+        maxTurn: 1.2,
+        senseRange: 20,
+        eatRadius: 1.1,
+        moveCost: 0.06,
+        turnCost: 1.0,
+        maxEnergy: 95,
+        reproduceEnergy: 70,
+        reproduceCost: 45,
+        litterSize: 1,
+        maxAge: 1500,
+        foodEnergy: 14,
+    },
+    carnivore: {
+        kind: "carnivore",
+        name: "Carnivore",
+        color: 0xb85a3a,
+        speed: 1.9,
+        maxTurn: 1.3,
+        senseRange: 14,
+        eatRadius: 1.2,
+        moveCost: 0.16,
+        turnCost: 0.8,
+        maxEnergy: 100,
+        reproduceEnergy: 120,
+        reproduceCost: 100,
+        litterSize: 1,
+        maxAge: 1100,
+        foodEnergy: 9,
+    },
+    plants: { regrowPerTick: 0.55, energy: 26, maxPlants: 340, seasonLength: 5000, seasonDepth: 0.6 },
 };
