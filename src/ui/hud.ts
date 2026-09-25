@@ -17,6 +17,37 @@ const PLANT_COLOR = "#57c26e";
 const SEASON_COLOR = "#e6b45a";
 
 /**
+ * Population stat for kin feeding: of all the corpses carnivores have eaten,
+ * how many were blood kin of the eater. Kin can only ever arrive as carrion —
+ * a carnivore's relatives are carnivores too, and it only hunts herbivores —
+ * so this is the rate at which a lineage recycles its own dead.
+ *
+ * The two directions are named because they come out very lopsided: a dead
+ * parent is lying where its offspring still stands, while a dead offspring has
+ * usually wandered off, so in practice the forebear side carries almost all of
+ * it. Showing one blended number would hide that.
+ */
+export function kinStatText(
+    carrionMeals: number,
+    kinMeals: number,
+    kinAncestorMeals = 0,
+    kinDescendantMeals = 0,
+): string {
+    if (carrionMeals <= 0) return "近親取食 —";
+    const pct = Math.round((kinMeals / carrionMeals) * 100);
+    // Only break the total down when the two sides actually account for it.
+    // A caller that passes no split (both zero with meals on the books) gets
+    // no claim rather than an invented "all forebears".
+    const sides =
+        kinMeals <= 0 || kinAncestorMeals + kinDescendantMeals !== kinMeals
+            ? ""
+            : kinDescendantMeals === 0
+              ? "（全為親代）"
+              : `（親代 ${kinAncestorMeals} · 子代 ${kinDescendantMeals}）`;
+    return `近親取食 ${kinMeals} · 佔腐食 ${pct}%${sides}`;
+}
+
+/**
  * SVG polyline points for a series of the last N records, scaled to 0..max.
  * Pass `fixedMax` to pin the scale instead of scaling to the series' own max
  * (used by the season curve, whose 0..1 range should fill the chart).
@@ -85,6 +116,7 @@ function updateMetrics(
     barCarnEl: HTMLElement,
     metaHerbEl: Element,
     metaCarnEl: Element,
+    kinEl: Element,
 ): void {
     if (!record) return;
     barHerbEl.style.width = `${Math.min(100, record.avgEnergy.herbivore).toFixed(0)}%`;
@@ -93,6 +125,12 @@ function updateMetrics(
         `均能 ${record.avgEnergy.herbivore.toFixed(0)} · 世代 ${record.avgGeneration.herbivore.toFixed(0)} · 生 ${record.births.herbivore} 死 ${record.deaths.herbivore}`;
     metaCarnEl.textContent =
         `均能 ${record.avgEnergy.carnivore.toFixed(0)} · 世代 ${record.avgGeneration.carnivore.toFixed(0)} · 生 ${record.births.carnivore} 死 ${record.deaths.carnivore}`;
+    kinEl.textContent = kinStatText(
+        record.carrionMeals,
+        record.kinMeals,
+        record.kinAncestorMeals,
+        record.kinDescendantMeals,
+    );
 }
 
 function updateStateBanner(
@@ -175,6 +213,8 @@ export function createHud(container: HTMLElement): Hud {
             </div>
         </div>
 
+        <div class="hud-stat" id="hud-kin">—</div>
+
         <div class="hud-chart">
             <div class="hud-chart-legend">
                 <span class="key"><i style="background:${HERB_COLOR}"></i>草食</span>
@@ -223,6 +263,7 @@ export function createHud(container: HTMLElement): Hud {
     const barCarnEl = queryHud<HTMLElement>("#bar-carn");
     const metaHerbEl = queryHud("#meta-herb");
     const metaCarnEl = queryHud("#meta-carn");
+    const kinEl = queryHud("#hud-kin");
     const lineHerbEl = queryHud("#line-herb");
     const lineCarnEl = queryHud("#line-carn");
     const linePlantEl = queryHud("#line-plant");
@@ -242,7 +283,7 @@ export function createHud(container: HTMLElement): Hud {
             popHerbEl.textContent = String(counts.herb);
             popCarnEl.textContent = String(counts.carn);
 
-            updateMetrics(records.at(-1), barHerbEl, barCarnEl, metaHerbEl, metaCarnEl);
+            updateMetrics(records.at(-1), barHerbEl, barCarnEl, metaHerbEl, metaCarnEl, kinEl);
             updateStateBanner(world, paused, stateEl, overEl, overTitleEl, overSubEl);
 
             const seasonLen = world.config.plantSeasonLength ?? 0;

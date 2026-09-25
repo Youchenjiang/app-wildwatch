@@ -190,6 +190,20 @@ body {
     border-radius: 5px;
 }
 
+#hud .hud-stat {
+    margin-bottom: 5px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(130, 170, 140, 0.16);
+    font-size: 9.5px;
+    color: #8ba595;
+    font-variant-numeric: tabular-nums;
+}
+
+#hud .hud-stat b {
+    color: #d9c07a;
+    font-weight: 600;
+}
+
 #hud .hud-help {
     font-size: 9px;
     color: #5f7a6a;
@@ -455,6 +469,17 @@ body {
 
 #inspector .meal-src.carrion {
     color: #c9a86a;
+}
+
+/* Kin feeding: a corpse that belonged to the eater's own lineage. */
+#inspector .insp-mem-row.kin {
+    background: rgba(201, 168, 106, 0.14);
+    border-radius: 3px;
+}
+
+#inspector .insp-mem-row.kin .meal-src,
+#inspector .insp-meal-sum b.meal-kin {
+    color: #e0b671;
 }
 
 /* ------------------------------------------------------- Game-over veil */

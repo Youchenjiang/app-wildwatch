@@ -12,6 +12,12 @@ const MEAL_LABEL: Record<MealSource, string> = {
     carrion: "屍體",
 };
 
+/** What a kin meal is labelled in the list: which way the kinship ran. */
+const KIN_LABEL: Record<"ancestor" | "descendant", string> = {
+    ancestor: "親代",
+    descendant: "子代",
+};
+
 interface MemoryRow {
     similarity: number;
     actionHint: number;
@@ -60,6 +66,7 @@ export function createInspector(container: HTMLElement): EntityInspector {
         const s = e.species;
         const kindName = s.kind === "herbivore" ? "草食" : "肉食";
         const counts = e.meals.counts();
+        const kin = e.meals.kinCount();
         card.innerHTML = `
             <div class="insp-head">
                 <span class="dot ${s.kind === "herbivore" ? "herb" : "carn"}"></span>
@@ -99,7 +106,9 @@ export function createInspector(container: HTMLElement): EntityInspector {
             }
             <div class="insp-mem-title">
                 進食 · 最近 ${meals.length} 條
-                <span class="insp-meal-sum">植物 ${counts.plant} · 獵物 ${counts.prey} · 屍體 ${counts.carrion}</span>
+                <span class="insp-meal-sum">植物 ${counts.plant} · 獵物 ${counts.prey} · 屍體 ${counts.carrion}${
+                    kin > 0 ? ` · <b class="meal-kin">血親 ${kin}</b>` : ""
+                }</span>
             </div>
             ${
                 meals.length === 0
@@ -109,8 +118,14 @@ export function createInspector(container: HTMLElement): EntityInspector {
                         ${meals
                             .map(
                                 (m) => `
-                        <div class="insp-mem-row">
-                            <i class="meal-src ${m.source}">${MEAL_LABEL[m.source]}</i>
+                        <div class="insp-mem-row${m.kin ? " kin" : ""}"${
+                            m.kin
+                                ? ` title="近親取食 · 相差 ${m.kinGeneration} 代"`
+                                : ""
+                        }>
+                            <i class="meal-src ${m.source}">${
+                                m.kin ? KIN_LABEL[m.kinRelation ?? "ancestor"] : MEAL_LABEL[m.source]
+                            }</i>
                             <b>+${m.energy.toFixed(0)}</b>
                             <span>${m.victimGeneration === undefined ? "—" : `G${m.victimGeneration}`}</span>
                             <em>${e.age - m.age}t</em>
