@@ -13,8 +13,11 @@
  * h=31 c=41). Re-validate whenever an ecosystem mechanic changes.
  */
 import { DEFAULT_BRAIN_SPEC, type WorldConfig } from "./world";
+import { iceAgeEra } from "./era";
+import type { EraConfig } from "./era";
 
-export function makeSeeding(seed = 20260907): WorldConfig {
+export function makeSeeding(seed = 20260907, era?: EraConfig): WorldConfig {
+    const plant = era?.plants ?? {};
     return {
         width: 120,
         height: 120,
@@ -22,9 +25,9 @@ export function makeSeeding(seed = 20260907): WorldConfig {
         herbivoreCount: 60,
         carnivoreCount: 3,
         plantCount: 240,
-        plantRegrowPerTick: 1,
-        plantEnergy: 18,
-        maxPlants: 500,
+        plantRegrowPerTick: plant.regrowPerTick ?? 1,
+        plantEnergy: plant.energy ?? 18,
+        maxPlants: plant.maxPlants ?? 500,
         turnLength: 100,
         populationCap: 500,
         mateRange: 3,
@@ -33,5 +36,28 @@ export function makeSeeding(seed = 20260907): WorldConfig {
         brainSpec: DEFAULT_BRAIN_SPEC,
         plantSeasonLength: 3000,
         plantSeasonDepth: 0.5,
+        era,
+    };
+}
+
+export function grasslandSeeding(seed = 20260907): WorldConfig {
+    return makeSeeding(seed, undefined);
+}
+
+export function iceAgeSeeding(seed = 20260907): WorldConfig {
+    return {
+        ...makeSeeding(seed, iceAgeEra),
+        carnivoreCount: 1,
+    };
+}
+
+/** Ice-age seeding tuned for the era's lower energy throughput: fewer
+ * starting carnivores so herbivores can establish before predation ramps up. */
+export function iceAgeSeedingTuned(seed = 20260907): WorldConfig {
+    return {
+        ...iceAgeSeeding(seed),
+        carnivoreCount: 2,
+        herbivoreCount: 80,
+        plantCount: 280,
     };
 }
