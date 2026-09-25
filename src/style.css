@@ -430,16 +430,21 @@ body {
 
 #hud-over {
     position: fixed;
-    inset: 0;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    gap: 6px;
-    background: rgba(6, 10, 7, 0.55);
-    backdrop-filter: blur(1px);
+    gap: 4px;
+    padding: 14px 28px;
+    background: rgba(8, 14, 10, 0.88);
+    border: 1px solid rgba(200, 120, 110, 0.3);
+    border-radius: 12px;
+    backdrop-filter: blur(4px);
     text-align: center;
-    animation: over-fade 0.5s ease both;
+    animation: over-fade 0.4s ease both;
+    z-index: 6;
 }
 
 #hud-over[hidden] {
@@ -447,26 +452,25 @@ body {
 }
 
 #hud-over .over-title {
-    font-size: 26px;
+    font-size: 18px;
     font-weight: 700;
-    letter-spacing: 1px;
+    letter-spacing: 0.5px;
     color: #e8a898;
-    text-shadow: 0 2px 16px rgba(0, 0, 0, 0.6);
 }
 
 #hud-over .over-sub {
-    font-size: 12px;
+    font-size: 11px;
     color: #b8c8bb;
 }
 
 #hud-over .over-sub kbd {
-    padding: 1px 6px;
+    padding: 1px 5px;
     border: 1px solid rgba(160, 200, 170, 0.4);
     border-bottom-width: 2px;
     border-radius: 4px;
     background: rgba(20, 32, 24, 0.8);
     font-family: inherit;
-    font-size: 11px;
+    font-size: 10px;
     color: #d9e7dc;
 }
 

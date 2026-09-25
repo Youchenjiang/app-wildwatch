@@ -161,7 +161,7 @@ export function createHud(container: HTMLElement): Hud {
                 stateEl.textContent = "訓練結束";
                 stateEl.className = "hud-state dead";
                 overEl.hidden = false;
-                overTitleEl.textContent = `💀 ${name}族群滅絕`;
+                overTitleEl.textContent = `${name}族群滅絕`;
                 overSubEl.innerHTML = `本次訓練於回合 ${world.turn} 結束 · 共 ${world.tick} ticks<br>按 <kbd>R</kbd> 重新投放`;
             } else {
                 stateEl.textContent = paused ? "已暫停" : "運行中";
