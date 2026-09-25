@@ -17,14 +17,21 @@ export interface RenderSubjects {
 
 /** Keeps a Three.js mesh per sim entity/plant/carrion id, reusing meshes across frames. */
 export class MeshPool {
+    /** Update plant colors for a new era. Called when the player switches
+     * era mid-run or restarts with a different era. */
+    setEra(era?: EraConfig): void {
+        this.plantPeakColor = new THREE.Color(era?.plantPeakColor ?? 0x3fae5a);
+        this.plantTroughColor = new THREE.Color(era?.plantTroughColor ?? 0x9a7b4d);
+        this.syncSeason(null);
+    }
     private readonly scene: THREE.Scene;
     private readonly npcMeshes = new Map<number, THREE.Mesh>();
     private readonly npcShadows = new Map<number, THREE.Mesh>();
     private readonly plantMeshes = new Map<number, THREE.Mesh>();
     private readonly carrionMeshes = new Map<number, THREE.Mesh>();
     private readonly shadowMat: THREE.MeshBasicMaterial;
-    private readonly plantPeakColor: THREE.Color;
-    private readonly plantTroughColor: THREE.Color;
+    private plantPeakColor = new THREE.Color(0x3fae5a);
+    private plantTroughColor = new THREE.Color(0x9a7b4d);
     /** Sphere body + small nose cone so heading stays readable from above. */
     private readonly npcGeometry = MeshPool.buildAnimalGeometry();
     private static buildAnimalGeometry(): THREE.BufferGeometry {

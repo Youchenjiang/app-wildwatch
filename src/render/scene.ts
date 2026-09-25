@@ -40,7 +40,15 @@ export class Atmosphere {
     private readonly groundMat: THREE.MeshLambertMaterial;
     private readonly gridMat: THREE.LineBasicMaterial;
     private readonly wallMat: THREE.MeshLambertMaterial;
-    private readonly colors: AtmosphereColors;
+    private colors: AtmosphereColors;
+
+    /** Update the atmosphere palette to a new era's colors. Mid-run era
+     * transitions call this to retint the sky/ground/light/wall without
+     * rebuilding the scene. */
+    setColors(colors: AtmosphereColors): void {
+        this.colors = colors;
+        this.syncSeason(null);
+    }
 
     constructor(
         scene: THREE.Scene,
@@ -157,7 +165,7 @@ export function createRenderContext(
     return { renderer, scene, camera, view, atmosphere };
 }
 
-function defaultAtmosphereColors(): AtmosphereColors {
+export function defaultAtmosphereColors(): AtmosphereColors {
     return {
         bgPeak: new THREE.Color(0x0c140e),
         bgTrough: new THREE.Color(0x303840),
