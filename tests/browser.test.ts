@@ -48,9 +48,16 @@ function installProbe(): void {
         pos: { x: number; y: number };
         species: { kind: string };
     }
+    interface SimPlant {
+        id: number;
+        x: number;
+        y: number;
+        bites: number;
+        energy: number;
+    }
     const globals = globalThis as unknown as {
         __obs: { screenPoint(x: number, y: number): { x: number; y: number } };
-        world: { tick: number; entities: SimEntity[] };
+        world: { tick: number; entities: SimEntity[]; plants: SimPlant[] };
     };
     const canvasEl = (): HTMLCanvasElement | null => document.querySelector("#app canvas");
     const rect = () => {
@@ -126,6 +133,35 @@ function installProbe(): void {
                 }
             }
             return best ? { id: best.id, x: best.x, y: best.y } : null;
+        },
+        // A tuft to click: plants are picked with a little slop, so a tuft near
+        // the middle is the easiest thing in the world to aim at.
+        plantOnCanvas(minDistanceFromCentre: number): { id: number; x: number; y: number; bites: number } | null {
+            const r = rect();
+            const cx = r.left + r.width / 2;
+            const cy = r.top + r.height / 2;
+            let best: { id: number; x: number; y: number; bites: number; distance: number } | null = null;
+            for (const plant of globals.world.plants) {
+                const p = globals.__obs.screenPoint(plant.x, plant.y);
+                if (p.x < r.left + 12 || p.y < r.top + 12 || p.x > r.right - 12 || p.y > r.bottom - 12) {
+                    continue;
+                }
+                if (!overCanvas(p.x, p.y)) continue;
+                const distance = Math.hypot(p.x - cx, p.y - cy);
+                if (distance < minDistanceFromCentre) continue;
+                if (!best || distance < best.distance) {
+                    best = { id: plant.id, x: p.x, y: p.y, bites: plant.bites, distance };
+                }
+            }
+            return best ? { id: best.id, x: best.x, y: best.y, bites: best.bites } : null;
+        },
+        plantBites(id: number): number | null {
+            const plant = globals.world.plants.find((p) => p.id === id);
+            return plant ? plant.bites : null;
+        },
+        plantScreenPoint(id: number): Point | null {
+            const plant = globals.world.plants.find((p) => p.id === id);
+            return plant ? globals.__obs.screenPoint(plant.x, plant.y) : null;
         },
         animalScreenPoint(id: number): Point | null {
             const entity = globals.world.entities.find((candidate) => candidate.id === id);
@@ -453,6 +489,63 @@ describe("observer controls in a real browser", () => {
         const released = await view(page);
         expect(released.following).toBeNull();
         expect(await probe<boolean>(page, "inspectorOpen()")).toBe(false);
+    });
+
+    scenario("selects a tuft, and the card says how many bites it has left", async (page) => {
+        await resetView(page);
+        // Paused first: a tuft is a few pixels of blades, and the sim runs fast
+        // enough that a click spends its round trip while the world moves.
+        if ((await probe<string>(page, "hudState()")) !== "已暫停") {
+            await page.press("Space");
+            await page.waitFor("window.__probe.hudState() === '已暫停'", "the run to pause");
+        }
+        const at = await centrePoint(page);
+        for (let i = 0; i < 3; i++) await page.wheel(-120, at);
+        const target = await probe<{ id: number; x: number; y: number; bites: number } | null>(
+            page,
+            "plantOnCanvas(0)",
+        );
+        expect(target, "a tuft drew clear of the overlays").not.toBeNull();
+
+        await page.click({ x: target!.x, y: target!.y });
+        // The click sets the selection in the event handler, but the card is
+        // written by the next frame, so wait for the card rather than assuming
+        // it is there the moment the pointer event returns.
+        await page.waitFor(
+            "document.querySelector('#inspector').textContent.includes('草叢')",
+            "the inspector card for the clicked tuft",
+        );
+
+        // Selecting a tuft must not hand the camera a follow: a plant never
+        // moves, so a follow could only pin the view for nothing.
+        expect((await view(page)).following, "a tuft must not be followed").toBeNull();
+
+        const text = await page.evaluate<string>(
+            "document.querySelector('#inspector').textContent",
+        );
+        const named = /草叢\s*#(\d+)/.exec(text);
+        expect(named, "the card must be about a tuft").not.toBeNull();
+        const shown = /剩餘口數\s*(\d+) \/ (\d+)/.exec(text);
+        expect(shown, "the card must report the tuft's remaining bites").not.toBeNull();
+        expect(shown![2], "a full tuft holds the seeded bites").toBe("3");
+
+        // The numbers on the card must be the sim's, for the tuft the card
+        // names — a card reporting a stale or neighbouring tuft would still
+        // look plausible, which is why this is read back rather than assumed.
+        const selectedId = Number(named![1]);
+        const live = await probe<number | null>(page, `plantBites(${selectedId})`);
+        expect(live, "the card names a tuft that is standing").not.toBeNull();
+        expect(shown![1], "the card shows the bites the sim says are left").toBe(String(live));
+        expect(text, "a tuft is fertile the moment it appears").toContain("隨時（無成熟期）");
+
+        // And the click must have landed on the tuft it was aimed at, give or
+        // take the pick's own forgiveness.
+        const drawn = await probe<Point | null>(page, `plantScreenPoint(${selectedId})`);
+        expect(drawn, "the selected tuft is drawn").not.toBeNull();
+        expect(
+            Math.hypot(drawn!.x - target!.x, drawn!.y - target!.y),
+            "the selected tuft is the one the click was aimed at",
+        ).toBeLessThan(25);
     });
 
     scenario("keeps a followed animal at the middle as it moves, and hands the view back on a drag", async (page) => {
