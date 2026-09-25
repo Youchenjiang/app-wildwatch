@@ -19,7 +19,7 @@ export class MeshPool {
     private readonly npcMeshes = new Map<number, THREE.Mesh>();
     private readonly plantMeshes = new Map<number, THREE.Mesh>();
     private readonly carrionMeshes = new Map<number, THREE.Mesh>();
-    private readonly npcGeometry = new THREE.ConeGeometry(0.9, 2.0, 7);
+    private readonly npcGeometry = new THREE.SphereGeometry(0.7, 8, 6);
     private readonly plantGeometry = new THREE.CylinderGeometry(0.35, 0.5, 0.8, 6);
     private readonly carrionGeometry = new THREE.SphereGeometry(0.65, 8, 6);
     private readonly plantMaterial = new THREE.MeshLambertMaterial({ color: 0x3fae5a });
