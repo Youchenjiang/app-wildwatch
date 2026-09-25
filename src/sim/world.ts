@@ -167,6 +167,14 @@ export interface WorldConfig {
     mealLogCapacity?: number;
     /** Scenario era: redisot the biome palette and species tuning per era. */
     era?: import("./era").EraConfig;
+    /**
+     * Fraction of maxEnergy below which a starving carnivore considers
+     * same-species animals as prey (default 0 = disabled). When enabled,
+     * the hunt still uses the catch-chance mechanic (with carnivore density
+     * for the prey-refuge factor), so cannibalism becomes more likely when
+     * predators are crowded and herbivores are scarce.
+     */
+    cannibalismThreshold?: number;
 }
 
 interface Sense {
@@ -646,17 +654,33 @@ export class World {
         return best;
     }
 
-    private sense(e: Entity): Sense | null {
-        const s = e.species;
-        const found =
-            s.kind === "herbivore"
-                ? this.nearest(this.queryPlants(e.pos, s.senseRange), (p) => p.alive, (p) => p, e.pos)
-                : this.nearest(
-                      this.queryEntities(e.pos, s.senseRange),
-                      (p) => p.alive && p.species.kind === "herbivore",
-                      (p) => p.pos,
-                      e.pos,
-                  );
+    private sense(entity: Entity): Sense | null {
+        const species = entity.species;
+        if (species.kind === "herbivore") {
+            const found = this.nearest(
+                this.queryPlants(entity.pos, species.senseRange),
+                (plant) => plant.alive,
+                (plant) => plant,
+                entity.pos,
+            );
+            return found ? { dx: found.dx, dy: found.dy, dist: Math.sqrt(found.d2) } : null;
+        }
+
+        // A threshold of 0 means "off", and has to be checked as such:
+        // energy dips slightly below zero before an animal dies, so
+        // comparing that dip against `0 * maxEnergy` reads it as starvation
+        // and lets a nominally disabled feature hunt its own kind.
+        const cannibalThreshold = this.config.cannibalismThreshold ?? 0;
+        const starving = cannibalThreshold > 0 && entity.energy < cannibalThreshold * species.maxEnergy;
+        const found = this.nearest(
+            this.queryEntities(entity.pos, species.senseRange),
+            (candidate) =>
+                candidate.alive &&
+                (candidate.species.kind === "herbivore" ||
+                    (starving && candidate !== entity && candidate.species.kind === species.kind)),
+            (candidate) => candidate.pos,
+            entity.pos,
+        );
         return found ? { dx: found.dx, dy: found.dy, dist: Math.sqrt(found.d2) } : null;
     }
 
@@ -772,9 +796,18 @@ export class World {
 
     private tryHunt(entity: Entity, inputs: number[], steer: number): void {
         const species = entity.species;
+        // A threshold of 0 means "off", and has to be checked as such:
+        // energy dips slightly below zero before an animal dies, so
+        // comparing that dip against `0 * maxEnergy` reads it as starvation
+        // and lets a nominally disabled feature hunt its own kind.
+        const cannibalThreshold = this.config.cannibalismThreshold ?? 0;
+        const starving = cannibalThreshold > 0 && entity.energy < cannibalThreshold * species.maxEnergy;
         const found = this.nearest(
             this.queryEntities(entity.pos, species.eatRadius),
-            (target) => target.alive && target.species.kind === "herbivore",
+            (target) =>
+                target.alive &&
+                (target.species.kind === "herbivore" ||
+                    (starving && target !== entity && target.species.kind === species.kind)),
             (target) => target.pos,
             entity.pos,
         );
@@ -784,8 +817,10 @@ export class World {
         // prey are rare, hunts almost always fail, so predators starve
         // back before they can finish the prey off. When prey are
         // abundant, hunts saturate and predators can boom.
+        const isCannibal = found.item.species.kind === species.kind;
         const preyDensity =
-            this.populationOf("herbivore") / (this.config.width * this.config.height);
+            this.populationOf(isCannibal ? "carnivore" : "herbivore") /
+            (this.config.width * this.config.height);
         const scarcity = Math.min(1, preyDensity / PREY_REFUGE_DENSITY);
         const factor = scarcity * scarcity * scarcity * SATURATION_BONUS + REFUGE_FLOOR;
         if (this.rng() < CATCH_CHANCE * factor) {
@@ -818,10 +853,11 @@ export class World {
             entity.energy = Math.min(species.maxEnergy, entity.energy + gained);
             entity.fitness += gained;
             entity.foodEaten++;
-            // Kin can only be met here, not in the hunt above: offspring
-            // always inherit their parent's species, and a carnivore only
-            // ever hunts herbivores. So a predator's relatives are
-            // carnivores, which reach it as carrion and never as prey.
+            // Kin can be met here, or in the hunt above when cannibalism
+            // is enabled and the hunter is starving.  Offspring always
+            // inherit their parent's species, so a predator's relatives
+            // are carnivores — reached as carrion normally, or as live
+            // prey only under desperation.
             //
             // Both directions are asked for deliberately. A parent that
             // dies leaves a body its offspring may still be standing next
