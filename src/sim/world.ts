@@ -43,16 +43,20 @@ export interface Carrion {
  * the era presets and the season cycle (rule 2: nothing about a run may be
  * changed after it is seeded).
  *
- * - `asexual`: every birth is a clone of one parent. No mate is ever sought.
- * - `mixed`: mate with a nearby partner when one is found, clone otherwise.
- *   The historical behaviour, kept as the default so the validated baselines
- *   still describe a run seeded with no explicit choice.
- * - `sexual`: a birth needs a partner. Without one the animal does not breed
- *   and does not clone — it keeps its energy and waits, which is what makes
- *   the mode viable rather than a slow extinction: animals that never meet a
- *   mate stand around at high energy until one arrives.
+ * There are two modes and no middle ground, on purpose. A sexual animal that
+ * cannot find a partner does not reproduce at all — it does not clone "as a
+ * fallback", because that is not what sexual reproduction means, and a mode
+ * that sometimes mates and sometimes clones cannot be reasoned about: it
+ * would silently report clonal births from a run the player set to sexual.
+ *
+ * - `sexual`: a birth needs a partner. Without one the animal keeps its
+ *   energy, stays off cooldown and tries again next tick, so an animal that
+ *   never meets a mate simply never breeds.
+ * - `asexual`: every birth is a clone of one parent, and no mate is ever
+ *   sought. This is what runs have always done in practice, so it is the
+ *   default and reproduces the validated baselines exactly.
  */
-export type ReproductionMode = "asexual" | "mixed" | "sexual";
+export type ReproductionMode = "asexual" | "sexual";
 
 /** Per-turn population statistics — the raw material for evolution charts. */
 export interface TurnRecord {
@@ -69,9 +73,9 @@ export interface TurnRecord {
     maxFitness: Record<SpeciesKind, number>;
     /** Alive plants at snapshot time — the resource baseline for charts. */
     plantCount: number;
-    /** Cumulative births by how they were made. Kept apart so a mode choice is
-     * visible in the run rather than only in the config: with mateRange too
-     * small for encounters, mixed mode silently clones every time. */
+    /** Cumulative births by how they were made. Kept apart so the mode choice is
+     * read off the run rather than assumed from the config: a sexual run must
+     * show zero clonal births, and an asexual one zero sexual births. */
     sexualBirths: number;
     asexualBirths: number;
     /** Mean and deepest recorded ancestry among the living, in generations
@@ -109,10 +113,10 @@ export interface WorldConfig {
     turnLength: number;
     populationCap: number;
     /** Distance within which a same-species neighbor is eligible as a mate. */
-    /** How far an animal can reach for a partner. Only consulted by the
-     * sexual and mixed modes. */
+    /** How far an animal can reach for a partner. Only consulted in sexual
+     * mode; asexual never looks for one. */
     mateRange: number;
-    /** How this run's populations propagate. Defaults to "mixed". */
+    /** How this run's populations propagate. Defaults to "asexual". */
     reproduction?: ReproductionMode;
     mutationRate: number;
     mutationSigma: number;
@@ -779,19 +783,23 @@ export class World {
         }
         if (alive >= this.config.populationCap) return;
 
-        // `asexual` never looks for a partner at all, so it cannot accidentally
+        const mode = this.config.reproduction ?? "asexual";
+        // Asexual never looks for a partner at all, so it cannot accidentally
         // become sexual when one happens to be standing nearby.
-        const mode = this.config.reproduction ?? "mixed";
-        const mate = mode === "asexual" ? null : this.findMate(e);
-        // `sexual` without a partner is not a birth: the animal waits, keeping
-        // its energy and its cooldown clear, and tries again next tick.
-        if (mate === null && mode === "sexual") return;
+        const mate = mode === "sexual" ? this.findMate(e) : null;
+        // Sexual without a partner is not a birth: the animal waits, keeping
+        // its energy and its cooldown clear, and tries again next tick. There
+        // is deliberately no clone fallback — that is the whole difference
+        // between the two modes.
+        if (mode === "sexual" && mate === null) return;
         // Newborns start well below the breeding threshold: they must eat
         // before they can reproduce, which tempers exponential booms.
         const childEnergy = s.reproduceEnergy * 0.25;
         const generation = mate
             ? Math.max(e.generation, mate.generation) + 1
             : e.generation + 1;
+        // Every birth in sexual mode has a partner, and every birth in asexual
+        // mode is a clone, so the two cases cannot blur.
         for (let i = 0; i < s.litterSize; i++) {
             this.spawnEntity(s, generation, e, mate ?? undefined, childEnergy);
         }

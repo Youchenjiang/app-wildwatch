@@ -28,7 +28,7 @@ export const BASE_SEEDING = {
 export function makeSeeding(
     seed = 20260907,
     era?: EraConfig,
-    reproduction: ReproductionMode = "mixed",
+    reproduction: ReproductionMode = "asexual",
 ): WorldConfig {
     const plant = era?.plants ?? {};
     const counts = era?.seeding ?? {};
