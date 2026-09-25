@@ -21,40 +21,40 @@ body {
 
 #hud {
     position: fixed;
-    top: 14px;
-    left: 14px;
-    width: 280px;
-    padding: 12px 14px;
-    background: rgba(8, 14, 10, 0.72);
+    top: 12px;
+    left: 12px;
+    width: 200px;
+    padding: 10px 12px;
+    background: rgba(8, 14, 10, 0.78);
     border: 1px solid rgba(130, 170, 140, 0.22);
-    border-radius: 12px;
+    border-radius: 10px;
     color: #d9e7dc;
-    font-size: 12px;
-    line-height: 1.55;
+    font-size: 11px;
+    line-height: 1.5;
     user-select: none;
     backdrop-filter: blur(6px);
-    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
 }
 
 #hud .hud-head {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     justify-content: space-between;
     margin-bottom: 2px;
 }
 
 #hud .hud-title {
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 700;
-    letter-spacing: 1px;
+    letter-spacing: 0.5px;
     color: #b9e4c0;
 }
 
 #hud .hud-state {
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 600;
-    letter-spacing: 0.5px;
-    padding: 1px 8px;
+    letter-spacing: 0.3px;
+    padding: 1px 6px;
     border-radius: 999px;
     background: #122417;
     border: 1px solid rgba(90, 200, 120, 0.45);
@@ -74,40 +74,42 @@ body {
 }
 
 #hud .hud-turn {
-    font-size: 11px;
+    font-size: 10px;
     color: #93ab9b;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
     font-variant-numeric: tabular-nums;
 }
 
-/* Species cards */
+/* Species cards — compact: just dot + name + count */
 
 #hud .hud-species {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    margin-bottom: 9px;
+    gap: 4px;
+    margin-bottom: 6px;
 }
 
 #hud .hud-card {
-    padding: 6px 9px;
-    background: rgba(20, 32, 24, 0.55);
-    border: 1px solid rgba(120, 160, 130, 0.16);
-    border-radius: 8px;
+    padding: 4px 7px;
+    background: rgba(20, 32, 24, 0.5);
+    border: 1px solid rgba(120, 160, 130, 0.14);
+    border-radius: 6px;
 }
 
 #hud .hud-card-head {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
     font-weight: 600;
+    font-size: 11px;
 }
 
 #hud .hud-card-head .dot {
-    width: 8px;
-    height: 8px;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
     display: inline-block;
+    flex-shrink: 0;
 }
 
 #hud .dot.herb {
@@ -120,15 +122,15 @@ body {
 
 #hud .hud-pop-num {
     margin-left: auto;
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
 }
 
 #hud .bar {
-    height: 4px;
-    margin: 5px 0 4px;
-    background: rgba(255, 255, 255, 0.08);
+    height: 3px;
+    margin: 3px 0 2px;
+    background: rgba(255, 255, 255, 0.06);
     border-radius: 999px;
     overflow: hidden;
 }
@@ -147,33 +149,33 @@ body {
 }
 
 #hud .hud-meta {
-    font-size: 10.5px;
-    color: #8ba595;
+    font-size: 9.5px;
+    color: #7a9485;
     font-variant-numeric: tabular-nums;
 }
 
 /* Chart */
 
 #hud .hud-chart {
-    margin-bottom: 8px;
+    margin-bottom: 5px;
 }
 
 #hud .hud-chart-legend {
     display: flex;
-    gap: 10px;
-    font-size: 10px;
-    color: #8ba595;
-    margin-bottom: 3px;
+    gap: 8px;
+    font-size: 9px;
+    color: #7a9485;
+    margin-bottom: 2px;
 }
 
 #hud .hud-chart-legend .key {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 3px;
 }
 
 #hud .hud-chart-legend .key i {
-    width: 10px;
+    width: 8px;
     height: 2px;
     border-radius: 1px;
     display: inline-block;
@@ -181,34 +183,34 @@ body {
 
 #hud .hud-chart svg {
     width: 100%;
-    height: 54px;
+    height: 40px;
     display: block;
-    background: rgba(15, 24, 18, 0.6);
-    border: 1px solid rgba(120, 160, 130, 0.14);
-    border-radius: 6px;
+    background: rgba(15, 24, 18, 0.5);
+    border: 1px solid rgba(120, 160, 130, 0.12);
+    border-radius: 5px;
 }
 
 #hud .hud-help {
-    font-size: 10px;
-    color: #6f8a79;
+    font-size: 9px;
+    color: #5f7a6a;
 }
 
 /* --------------------------------------------------------- Control bar */
 
 #controls {
     position: fixed;
-    bottom: 14px;
+    bottom: 12px;
     left: 50%;
     transform: translateX(-50%);
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    padding: 8px 12px;
-    background: rgba(8, 14, 10, 0.78);
+    gap: 5px;
+    padding: 6px 10px;
+    background: rgba(8, 14, 10, 0.82);
     border: 1px solid rgba(130, 170, 140, 0.22);
-    border-radius: 12px;
+    border-radius: 10px;
     backdrop-filter: blur(6px);
-    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
     user-select: none;
     z-index: 5;
 }
@@ -216,18 +218,19 @@ body {
 #controls .ctl-row {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
 }
 
 #controls button {
     background: rgba(30, 46, 36, 0.85);
     color: #d9e7dc;
     border: 1px solid rgba(130, 170, 140, 0.3);
-    border-radius: 7px;
-    padding: 4px 10px;
-    font-size: 12px;
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 11px;
     font-family: inherit;
     cursor: pointer;
+    white-space: nowrap;
 }
 
 #controls button:hover {
@@ -237,36 +240,37 @@ body {
 #controls .ctl-speed {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 3px;
 }
 
 #controls .ctl-speed button {
-    padding: 2px 8px;
+    padding: 2px 6px;
 }
 
 #controls #ctl-speed-label {
-    min-width: 36px;
+    min-width: 30px;
     text-align: center;
-    font-size: 12px;
+    font-size: 11px;
     color: #b9e4c0;
     font-variant-numeric: tabular-nums;
 }
 
 #controls .ctl-sep {
     width: 1px;
-    height: 18px;
+    height: 16px;
     background: rgba(130, 170, 140, 0.25);
 }
 
 #controls #ctl-end {
-    color: #f0a89e;
-    border-color: rgba(220, 110, 100, 0.45);
+    color: #d4a09a;
+    border-color: rgba(200, 120, 110, 0.35);
+    font-size: 10px;
 }
 
 #controls .ctl-replay {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
 }
 
 #controls .ctl-replay[hidden] {
@@ -275,15 +279,15 @@ body {
 
 #controls #ctl-scrub {
     flex: 1;
-    min-width: 240px;
+    min-width: 200px;
     accent-color: #8fd9a2;
 }
 
 #controls #ctl-frame-label {
-    font-size: 11px;
+    font-size: 10px;
     color: #93ab9b;
     font-variant-numeric: tabular-nums;
-    min-width: 64px;
+    min-width: 56px;
     text-align: right;
 }
 
@@ -291,17 +295,17 @@ body {
 
 #inspector {
     position: fixed;
-    top: 14px;
-    right: 14px;
-    width: 210px;
-    padding: 10px 12px;
-    background: rgba(8, 14, 10, 0.78);
+    top: 12px;
+    right: 12px;
+    width: 200px;
+    padding: 8px 10px;
+    background: rgba(8, 14, 10, 0.82);
     border: 1px solid rgba(130, 170, 140, 0.28);
-    border-radius: 12px;
+    border-radius: 10px;
     color: #d9e7dc;
-    font-size: 11.5px;
+    font-size: 11px;
     backdrop-filter: blur(6px);
-    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
     user-select: none;
     z-index: 4;
 }
@@ -313,14 +317,14 @@ body {
 #inspector .insp-head {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
     font-weight: 700;
-    margin-bottom: 6px;
+    margin-bottom: 5px;
 }
 
 #inspector .insp-head .dot {
-    width: 8px;
-    height: 8px;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
 }
 
@@ -338,13 +342,13 @@ body {
     border: none;
     color: #8ba595;
     cursor: pointer;
-    font-size: 12px;
+    font-size: 11px;
 }
 
 #inspector .insp-rows > div {
     display: flex;
     justify-content: space-between;
-    padding: 1.5px 0;
+    padding: 1px 0;
 }
 
 #inspector .insp-rows span {
@@ -357,38 +361,38 @@ body {
 }
 
 #inspector .insp-frozen {
-    margin-top: 5px;
-    font-size: 10px;
+    margin-top: 4px;
+    font-size: 9px;
     color: #e6cf7a;
 }
 
 #inspector .insp-mem-title {
-    margin-top: 8px;
-    padding-top: 6px;
+    margin-top: 6px;
+    padding-top: 5px;
     border-top: 1px solid rgba(130, 170, 140, 0.18);
     font-weight: 700;
-    font-size: 10.5px;
+    font-size: 10px;
     color: #b9d4c2;
 }
 
 #inspector .insp-mem-empty {
-    margin-top: 4px;
-    font-size: 10px;
+    margin-top: 3px;
+    font-size: 9px;
     color: #8ba595;
 }
 
 #inspector .insp-mem {
-    margin-top: 3px;
-    max-height: 132px;
+    margin-top: 2px;
+    max-height: 120px;
     overflow-y: auto;
 }
 
 #inspector .insp-mem-head,
 #inspector .insp-mem-row {
     display: grid;
-    grid-template-columns: 40px 1fr 36px 40px;
+    grid-template-columns: 36px 1fr 32px 36px;
     gap: 2px;
-    font-size: 10px;
+    font-size: 9px;
     font-variant-numeric: tabular-nums;
 }
 
@@ -431,11 +435,11 @@ body {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    background: rgba(6, 10, 7, 0.66);
-    backdrop-filter: blur(2px);
+    gap: 6px;
+    background: rgba(6, 10, 7, 0.55);
+    backdrop-filter: blur(1px);
     text-align: center;
-    animation: over-fade 0.6s ease both;
+    animation: over-fade 0.5s ease both;
 }
 
 #hud-over[hidden] {
@@ -443,30 +447,114 @@ body {
 }
 
 #hud-over .over-title {
-    font-size: 34px;
-    font-weight: 800;
-    letter-spacing: 2px;
-    color: #ff8f83;
-    text-shadow: 0 2px 24px rgba(0, 0, 0, 0.8);
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: #e8a898;
+    text-shadow: 0 2px 16px rgba(0, 0, 0, 0.6);
 }
 
 #hud-over .over-sub {
-    font-size: 13px;
-    color: #c4d4c7;
+    font-size: 12px;
+    color: #b8c8bb;
 }
 
 #hud-over .over-sub kbd {
-    padding: 1px 7px;
+    padding: 1px 6px;
     border: 1px solid rgba(160, 200, 170, 0.4);
     border-bottom-width: 2px;
-    border-radius: 5px;
+    border-radius: 4px;
     background: rgba(20, 32, 24, 0.8);
     font-family: inherit;
-    font-size: 12px;
+    font-size: 11px;
     color: #d9e7dc;
 }
 
 @keyframes over-fade {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+/* ------------------------------------------------------- Welcome screen */
+
+#welcome {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: rgba(6, 10, 7, 0.85);
+    backdrop-filter: blur(4px);
+    text-align: center;
+    z-index: 10;
+    animation: welcome-fade 0.4s ease both;
+}
+
+#welcome[hidden] {
+    display: none;
+}
+
+#welcome .welcome-icon {
+    font-size: 48px;
+    line-height: 1;
+}
+
+#welcome .welcome-title {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: 2px;
+    color: #b9e4c0;
+}
+
+#welcome .welcome-sub {
+    font-size: 13px;
+    color: #8ba595;
+    max-width: 340px;
+    line-height: 1.6;
+}
+
+#welcome .welcome-sub em {
+    font-style: normal;
+    color: #d7f05a;
+    font-weight: 600;
+}
+
+#welcome .welcome-sub b {
+    font-weight: 600;
+    color: #ff7b6b;
+}
+
+#welcome button {
+    margin-top: 8px;
+    padding: 8px 28px;
+    font-size: 14px;
+    font-weight: 600;
+    font-family: inherit;
+    color: #0b120d;
+    background: #8fd9a2;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+#welcome button:hover {
+    background: #a8e6b8;
+}
+
+#welcome .welcome-keys {
+    font-size: 10px;
+    color: #5f7a6a;
+    margin-top: 4px;
+}
+
+@keyframes welcome-fade {
     from {
         opacity: 0;
     }

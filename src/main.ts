@@ -7,6 +7,7 @@ import { ObserverCamera } from "./render/camera";
 import { createHud } from "./ui/hud";
 import { createControls } from "./ui/controls";
 import { createInspector } from "./ui/inspector";
+import { createWelcome } from "./ui/welcome";
 import { ReplayRecorder } from "./observe/replay";
 
 const container = document.getElementById("app")!;
@@ -42,8 +43,13 @@ const inspector = createInspector(container);
 const recorder = new ReplayRecorder(1, 3600);
 
 let ticksPerFrame = 10;
-let paused = false;
+let paused = true;
 let replayIndex: number | null = null;
+
+// Welcome screen: pause until the player clicks start.
+createWelcome(container, () => {
+    paused = false;
+});
 
 window.addEventListener("keydown", (event) => {
     if (event.code === "Space") {
