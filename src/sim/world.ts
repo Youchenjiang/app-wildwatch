@@ -96,6 +96,16 @@ const EMPTY_COUNTS = (): Record<SpeciesKind, number> => ({ herbivore: 0, carnivo
 const KINDS: readonly SpeciesKind[] = ["herbivore", "carnivore"];
 const REPRODUCE_COOLDOWN = 60;
 
+/**
+ * Movement-energy multiplier from steering. Turning is biomechanically
+ * expensive (species.turnCost): at full steer the multiplier reaches
+ * (1 + turnCost). With turnCost 0 the multiplier is exactly 1, so ordinary
+ * travel is unaffected — the pressure only bites sustained hard turners.
+ */
+export function turnEnergyMultiplier(turnCost: number, steerMag: number, thrust: number): number {
+    return 1 + turnCost * steerMag * steerMag * (0.3 + 0.7 * thrust);
+}
+
 export class World {
     config: WorldConfig;
     rng: RNG;
@@ -347,7 +357,7 @@ export class World {
 
         // Turning is biomechanically expensive: sharp sustained steering
         // (spiraling) burns energy far faster than purposeful travel.
-        const turnPenalty = 1 + s.turnCost * steerMag * steerMag * (0.3 + 0.7 * thrust);
+        const turnPenalty = turnEnergyMultiplier(s.turnCost, steerMag, thrust);
         e.energy -= s.moveCost * (0.3 + 0.7 * thrust) * turnPenalty;
 
         this.tryEat(e, inputs);

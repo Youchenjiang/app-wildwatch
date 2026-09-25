@@ -15,8 +15,8 @@ export const SPECIES: Record<SpeciesParams["kind"], SpeciesParams> = {
         senseRange: 14,
         eatRadius: 1.1,
         moveCost: 0.05,
-        /** Turning carries no extra biomechanical cost (see steering probe). */
-        turnCost: 0,
+        /** Sustained hard turning burns extra energy — the cost of chasing. */
+        turnCost: 1.0,
         maxEnergy: 100,
         reproduceEnergy: 70,
         reproduceCost: 45,
@@ -34,7 +34,8 @@ export const SPECIES: Record<SpeciesParams["kind"], SpeciesParams> = {
         senseRange: 10,
         eatRadius: 1.2,
         moveCost: 0.18,
-        turnCost: 0,
+        /** Cheaper absolute turn cost than herbivores despite the higher move cost. */
+        turnCost: 0.8,
         maxEnergy: 100,
         reproduceEnergy: 130,
         reproduceCost: 105,
