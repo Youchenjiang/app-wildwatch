@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+    CARRION_DECAY_BUDGET,
     CARRION_FRESH_SCALE,
     CARRION_GONE_SCALE,
     COLLAPSE_HEIGHT,
     COLLAPSE_WIDTH,
+    carrionExit,
     carrionPose,
     collapsePose,
+    feedPose,
 } from "../src/render/meshes";
 
 describe("death collapse", () => {
@@ -92,5 +95,67 @@ describe("carrion deflation", () => {
         // before it starts decaying, so the top end must clamp.
         expect(carrionPose(3)).toEqual(carrionPose(1));
         expect(carrionPose(-1)).toEqual(carrionPose(0));
+    });
+});
+
+describe("corpse exits", () => {
+    it("reads a corpse removed with mass left as eaten", () => {
+        expect(carrionExit(60)).toBe("eaten");
+        expect(carrionExit(CARRION_DECAY_BUDGET + 0.01)).toBe("eaten");
+    });
+
+    it("reads a corpse removed at its last sliver as decayed", () => {
+        // Decay is the only other way out, and it removes the corpse only once
+        // its energy is spent.
+        expect(carrionExit(0)).toBe("decayed");
+        expect(carrionExit(CARRION_DECAY_BUDGET)).toBe("decayed");
+    });
+
+    it("covers a whole frame's worth of decay at the fastest speed", () => {
+        // 0.05 energy/tick at up to 60 ticks per drawn frame is the most a
+        // corpse can lose between frames without being eaten.
+        expect(CARRION_DECAY_BUDGET).toBeGreaterThan(0.05 * 60);
+    });
+});
+
+describe("scavenging", () => {
+    it("starts at the corpse's size, at rest", () => {
+        const p = feedPose(0.8, 0.6, 0);
+        expect(p.width).toBeCloseTo(0.8, 10);
+        expect(p.height).toBeCloseTo(0.6, 10);
+        expect(p.eased).toBe(0);
+    });
+
+    it("shrinks to a morsel by the time it is swallowed", () => {
+        const p = feedPose(1, 1, 1);
+        expect(p.eased).toBe(1);
+        expect(p.width).toBeLessThan(0.2);
+        expect(p.width).toBeGreaterThan(0);
+        expect(p.height).toBeLessThan(0.2);
+    });
+
+    it("shrinks monotonically as it is pulled in", () => {
+        let prev = Infinity;
+        for (let i = 0; i <= 10; i++) {
+            const width = feedPose(1, 1, i / 10).width;
+            expect(width).toBeLessThanOrEqual(prev);
+            prev = width;
+        }
+    });
+
+    it("yanks the corpse in early rather than easing it out linearly", () => {
+        // The pull toward the eater uses the eased progress, so most of the
+        // travel should happen in the first half of the animation.
+        expect(feedPose(1, 1, 0.5).eased).toBeGreaterThan(0.5);
+    });
+
+    it("preserves the corpse's proportions as it shrinks", () => {
+        const p = feedPose(0.8, 0.4, 0.6);
+        expect(p.width / p.height).toBeCloseTo(0.8 / 0.4, 10);
+    });
+
+    it("clamps progress outside 0..1", () => {
+        expect(feedPose(1, 1, -3)).toEqual(feedPose(1, 1, 0));
+        expect(feedPose(1, 1, 7)).toEqual(feedPose(1, 1, 1));
     });
 });
