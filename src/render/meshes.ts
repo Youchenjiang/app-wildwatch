@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { Entity } from "../sim/entity";
 import type { Carrion, Plant, World } from "../sim/world";
 import type { ReplayFrame } from "../observe/replay";
@@ -19,7 +20,16 @@ export class MeshPool {
     private readonly npcMeshes = new Map<number, THREE.Mesh>();
     private readonly plantMeshes = new Map<number, THREE.Mesh>();
     private readonly carrionMeshes = new Map<number, THREE.Mesh>();
-    private readonly npcGeometry = new THREE.SphereGeometry(0.7, 8, 6);
+    /** Sphere body + small nose cone so heading stays readable from above. */
+    private readonly npcGeometry = MeshPool.buildAnimalGeometry();
+    private static buildAnimalGeometry(): THREE.BufferGeometry {
+        const body = new THREE.SphereGeometry(0.7, 10, 8);
+        // Nose points along +Z so mesh.rotation.y = angle faces the travel direction.
+        const nose = new THREE.ConeGeometry(0.22, 0.7, 6);
+        nose.rotateX(Math.PI / 2); // cone's +Y axis -> +Z
+        nose.translate(0, 0, 0.95);
+        return mergeGeometries([body, nose])!;
+    }
     private readonly plantGeometry = new THREE.CylinderGeometry(0.35, 0.5, 0.8, 6);
     private readonly carrionGeometry = new THREE.SphereGeometry(0.65, 8, 6);
     private readonly plantMaterial = new THREE.MeshLambertMaterial({ color: 0x3fae5a });
