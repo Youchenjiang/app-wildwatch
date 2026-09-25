@@ -28,23 +28,41 @@ export const GAIT_HOP = 0.45;
 const GAIT_DECAY = 0.86;
 
 /**
- * Squash-stretch pose for one animal.
+ * The stride's deform on its own, as factors around 1.
  *
  * `wave` is a sine in [-1, 1]. At +1 the body is at the top of its stride:
- * airborne, stretched tall and thin. At -1 it is grounded and squashed short
- * and wide, like the compression of a landing. The x/z axes are compensated
- * by exactly 1/sqrt against the y deform, so the body really is squashed
- * rather than resized (volume is preserved to floating-point), and the hop is
- * biased upward (0.5 + 0.5 * wave) so a footfall never pushes the body below
- * its resting height.
+ * stretched tall and thin. At -1 it is grounded and squashed short and wide,
+ * like the compression of a landing. The x/z axes are compensated by exactly
+ * 1/sqrt against the y deform, so this squashes rather than resizes (volume is
+ * preserved to floating-point).
+ *
+ * Kept separate from `gaitPose` because only the body is built to take it: the
+ * pool inverts this for the rigid feature rig (snout, tail, ears, crest), so
+ * they hold their own shape while the body strides under them.
+ */
+export interface StrideDeform {
+    readonly x: number;
+    readonly y: number;
+    readonly z: number;
+}
+
+export function gaitDeform(gait: number, wave: number): StrideDeform {
+    const y = 1 + GAIT_SQUASH * gait * wave; // positive = tall, negative = squat
+    const x = 1 / Math.sqrt(y);
+    return { x, y, z: x };
+}
+
+/**
+ * Squash-stretch pose for one animal's body: its size times the stride's
+ * deform. The hop is biased upward (0.5 + 0.5 * wave) so a footfall never
+ * pushes the body below its resting height.
  */
 export function gaitPose(baseScale: number, gait: number, wave: number) {
-    const deform = GAIT_SQUASH * gait * wave; // positive = tall, negative = squat
-    const counter = 1 / Math.sqrt(1 + deform) - 1;
+    const stride = gaitDeform(gait, wave);
     return {
-        sx: baseScale * (1 + counter),
-        sy: baseScale * (1 + deform),
-        sz: baseScale * (1 + counter),
+        sx: baseScale * stride.x,
+        sy: baseScale * stride.y,
+        sz: baseScale * stride.z,
         lift: baseScale * GAIT_HOP * gait * (0.5 + 0.5 * wave),
     };
 }
@@ -269,26 +287,56 @@ function surfaceHeight(shape: AnimalShape, x: number, z: number): number {
     return bodyY * Math.sqrt(Math.max(0, inner));
 }
 
-/**
- * Merge one species' body and features into a single vertex-tinted geometry.
- * Exported because the shapes are a visual claim: the tests check them as
- * geometry rather than trusting the spec to have been read correctly.
- */
-export function buildAnimalGeometry(shape: AnimalShape): THREE.BufferGeometry {
-    const [bodyX, bodyY] = shape.body;
+/** A point in an animal's own frame: +z is the way it faces, +y is up. */
+export interface Anchor {
+    readonly x: number;
+    readonly y: number;
+    readonly z: number;
+}
+
+/** The body alone: the ellipsoid that takes the stride's deform. */
+function buildBody(shape: AnimalShape): THREE.BufferGeometry {
+    const [bodyX, bodyY, bodyZ] = shape.body;
     const body = new THREE.SphereGeometry(1, 10, 8);
-    body.scale(bodyX, bodyY, shape.body[2]);
-    const parts = [tinted(body, BODY_TINT)];
+    body.scale(bodyX, bodyY, bodyZ);
+    return tinted(body, BODY_TINT);
+}
+
+/**
+ * Merge one species' features — snout, tail, ears, crest — in the pose they
+ * are authored in, and report where they are planted on the body: the mean of
+ * their attachment points at the highest they stand.
+ *
+ * The body and its features are separate geometries because they take separate
+ * transforms: the stride squashes the body and must not squash these. They are
+ * rigid as a set, and a rigid set has to pivot somewhere — pick a spot on the
+ * body the features are planted on, and they keep their own shape while the
+ * body carries them. The highest attachment is the one to pivot on, because a
+ * feature lower than the pivot only ever sits a little deeper in the body as
+ * the surface moves, which cannot be seen, while one higher would lift off it.
+ * Averaging the points at that height keeps a symmetric pair (the ears) on the
+ * body's axis, where the surface rises and falls the way both of them do.
+ */
+function buildFeatures(shape: AnimalShape): {
+    geometry: THREE.BufferGeometry;
+    anchor: Anchor;
+} {
+    const parts: THREE.BufferGeometry[] = [];
+    /** Where each feature meets the body, in body units. */
+    const planted: Anchor[] = [];
 
     parts.push(tinted(
         coneAlong(shape.snout.radius, shape.snout.base, shape.snout.reach, 6),
         EXTREMITY_TINT,
     ));
+    // coneAlong stands the cone's base on the body's axis, at `base`.
+    planted.push({ x: 0, y: 0, z: shape.snout.base });
     if (shape.tail) {
         parts.push(tinted(
             coneAlong(shape.tail.radius, shape.tail.base, shape.tail.reach, 5),
             EXTREMITY_TINT,
         ));
+        planted.push({ x: 0, y: 0, z: shape.tail.base });
     }
     if (shape.ears) {
         const { radius, height, spread, back, tilt } = shape.ears;
@@ -297,28 +345,83 @@ export function buildAnimalGeometry(shape: AnimalShape): THREE.BufferGeometry {
             ear.rotateZ(side * tilt); // lean outwards, so a pair reads as ears
             // Stand it on the body's surface: half of the cone rises above its
             // own base point, and leaning tilts that rise back by cos(tilt).
-            const surfaceY = surfaceHeight(shape, side * spread, back) + (height / 2) * Math.cos(tilt);
-            ear.translate(side * spread, surfaceY, back);
+            const base = surfaceHeight(shape, side * spread, back);
+            ear.translate(side * spread, base + (height / 2) * Math.cos(tilt), back);
             parts.push(tinted(ear, FEATURE_TINT));
+            // Leaning is what moves the cone's base off the spot it was stood
+            // on, out to the side its tip leans.
+            planted.push({ x: side * (spread + (height / 2) * Math.sin(tilt)), y: base, z: back });
         }
     }
     if (shape.crest) {
         const { radius, height, back } = shape.crest;
         const crest = new THREE.ConeGeometry(radius, height, 5);
-        crest.translate(0, surfaceHeight(shape, 0, back) + height / 2, back);
+        const base = surfaceHeight(shape, 0, back);
+        crest.translate(0, base + height / 2, back);
         parts.push(tinted(crest, FEATURE_TINT));
+        planted.push({ x: 0, y: base, z: back });
     }
+
+    const top = Math.max(...planted.map((point) => point.y));
+    const highest = planted.filter((point) => point.y === top);
+    const mean = (ofProperty: (point: Anchor) => number) =>
+        highest.reduce((sum, point) => sum + ofProperty(point), 0) / highest.length;
     const merged = mergeGeometries(parts, false);
     if (!merged) {
-        throw new Error("Failed to merge animal geometries");
+        throw new Error("Failed to merge animal features");
+    }
+    return {
+        geometry: merged,
+        anchor: { x: mean((point) => point.x), y: top, z: mean((point) => point.z) },
+    };
+}
+
+/**
+ * One species' geometry, split so the body can stride without distorting the
+ * features. `appendages` is re-centred on `anchor`, so the pool can place the
+ * rigid rig at that point and let the body's deform carry it.
+ */
+export interface AnimalParts {
+    readonly body: THREE.BufferGeometry;
+    readonly appendages: THREE.BufferGeometry;
+    readonly anchor: Anchor;
+}
+
+/**
+ * One species' body and features as a rest pose, merged into a single
+ * vertex-tinted geometry. Exported because the shapes are a visual claim: the
+ * tests check them as geometry rather than trusting the spec to have been read
+ * correctly.
+ */
+export function buildAnimalGeometry(shape: AnimalShape): THREE.BufferGeometry {
+    // One merged geometry per species drawn with one material: no groups.
+    const merged = mergeGeometries([buildBody(shape), buildFeatures(shape).geometry], false);
+    if (!merged) {
+        throw new Error("Failed to merge animal geometry");
     }
     return merged;
 }
 
-/** Exactly two animal geometries are ever built, so they are cached for good. */
-const ANIMAL_GEOMETRIES = new Map<SpeciesKind, THREE.BufferGeometry>();
+/**
+ * One species' geometry, split the way the pool draws it: a deformable body
+ * and a rigid set of features. Exported for the same reason as the merged
+ * form — the split is a claim about how the animal moves, and the tests
+ * measure it.
+ */
+export function buildAnimalParts(shape: AnimalShape): AnimalParts {
+    const { geometry, anchor } = buildFeatures(shape);
+    return {
+        body: buildBody(shape),
+        appendages: geometry.clone().translate(-anchor.x, -anchor.y, -anchor.z),
+        anchor,
+    };
+}
 
-/** The geometry drawn for a species kind, built on first use. */
+/** Exactly two of each animal geometry are ever built, so they are cached. */
+const ANIMAL_GEOMETRIES = new Map<SpeciesKind, THREE.BufferGeometry>();
+const ANIMAL_PARTS = new Map<SpeciesKind, AnimalParts>();
+
+/** The rest-pose geometry drawn for a species kind, built on first use. */
 export function animalGeometry(kind: SpeciesKind): THREE.BufferGeometry {
     let geometry = ANIMAL_GEOMETRIES.get(kind);
     if (!geometry) {
@@ -326,6 +429,16 @@ export function animalGeometry(kind: SpeciesKind): THREE.BufferGeometry {
         ANIMAL_GEOMETRIES.set(kind, geometry);
     }
     return geometry;
+}
+
+/** The body and rigid features drawn for a species kind, built on first use. */
+export function animalParts(kind: SpeciesKind): AnimalParts {
+    let parts = ANIMAL_PARTS.get(kind);
+    if (!parts) {
+        parts = buildAnimalParts(ANIMAL_SHAPES[kind]);
+        ANIMAL_PARTS.set(kind, parts);
+    }
+    return parts;
 }
 
 /** Keeps a Three.js mesh per sim entity/plant/carrion id, reusing meshes across frames. */
@@ -529,9 +642,7 @@ export class MeshPool {
             let mesh = this.npcMeshes.get(e.id);
             if (!mesh) {
                 // The silhouette follows the species, not the colour alone.
-                mesh = new THREE.Mesh(animalGeometry(e.species.kind), this.materialFor(e.species.color, true));
-                this.scene.add(mesh);
-                this.npcMeshes.set(e.id, mesh);
+                mesh = this.addAnimal(e.id, e.species.kind, this.materialFor(e.species.color, true));
             }
             const scale = 0.6 + 0.8 * Math.min(1, e.energy / e.species.maxEnergy);
             const lift = this.poseAnimal(mesh, e.id, e.pos.x, e.pos.y, e.angle, scale);
@@ -572,9 +683,7 @@ export class MeshPool {
                 // world chooses it, so a replay shows the same animals.
                 const kind: SpeciesKind = n.kind === 0 ? "herbivore" : "carnivore";
                 const color = kind === "herbivore" ? HERB_COLOR : CARN_COLOR;
-                mesh = new THREE.Mesh(animalGeometry(kind), this.materialFor(color, true));
-                this.scene.add(mesh);
-                this.npcMeshes.set(n.id, mesh);
+                mesh = this.addAnimal(n.id, kind, this.materialFor(color, true));
             }
             const scale = 0.6 + 0.8 * n.energy01;
             const lift = this.poseAnimal(mesh, n.id, n.x, n.y, n.angle, scale);
@@ -612,6 +721,10 @@ export class MeshPool {
             if (animateDeaths && !this.collapsing.has(id)) {
                 const shadow = this.npcShadows.get(id) ?? null;
                 if (shadow) this.npcShadows.delete(id);
+                // A dying animal is one rigid thing again: let the rig take the
+                // body's collapse rather than holding whatever stride it was
+                // caught mid-way through.
+                this.rigOf(mesh)?.scale.set(1, 1, 1);
                 this.collapsing.set(id, {
                     startTime: this.animTime,
                     x: mesh.position.x,
@@ -651,6 +764,29 @@ export class MeshPool {
     }
 
     /**
+     * Add one animal to the scene: its deformable body, with its rigid feature
+     * rig parented to it at the point the features are planted on. The rig
+     * takes its size from the body's own deform each frame, so nothing has to
+     * be told the stride except the body itself.
+     */
+    private addAnimal(id: number, kind: SpeciesKind, material: THREE.MeshLambertMaterial): THREE.Mesh {
+        const parts = animalParts(kind);
+        const mesh = new THREE.Mesh(parts.body, material);
+        const rig = new THREE.Mesh(parts.appendages, material);
+        rig.position.set(parts.anchor.x, parts.anchor.y, parts.anchor.z);
+        mesh.add(rig);
+        this.scene.add(mesh);
+        this.npcMeshes.set(id, mesh);
+        return mesh;
+    }
+
+    /** The rigid feature rig parented to an animal's body, if it has one. */
+    private rigOf(mesh: THREE.Mesh): THREE.Mesh | null {
+        const rig = mesh.children[0];
+        return rig instanceof THREE.Mesh ? rig : null;
+    }
+
+    /**
      * Pose one animal for this frame: measure how far it travelled since the
      * last sync, then apply a squash-stretch stride with a small hop. Bodies
      * bob out of phase (seeded by id) so a herd never marches in lockstep, and
@@ -684,6 +820,17 @@ export class MeshPool {
         // Setting it to `angle` pointed every animal 90 degrees off except on
         // the diagonals, where the reflection happens to be a fixed point.
         mesh.rotation.y = Math.PI / 2 - angle;
+        // The features are rigid: the rig's scale is exactly the inverse of the
+        // stride the body above it was just given, so the snout keeps its
+        // length and the ears their height while the body breathes. It needs no
+        // placement of its own — its origin sits at the point the features are
+        // planted on, and the body's deform carries that point where the
+        // deformed surface goes.
+        const rig = this.rigOf(mesh);
+        if (rig) {
+            const stride = gaitDeform(gait, wave);
+            rig.scale.set(1 / stride.x, 1 / stride.y, 1 / stride.z);
+        }
         // Normalized 0..1 lift, so callers don't have to know the body size.
         return pose.lift / (baseScale * GAIT_HOP);
     }
@@ -853,11 +1000,16 @@ export class MeshPool {
         const raycaster = new THREE.Raycaster();
         raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
         const meshes = this.pickList.map((p) => p.mesh);
-        const hits = raycaster.intersectObjects(meshes, false);
-        if (hits.length === 0) return null;
-        const hitMesh = hits[0].object;
-        const found = this.pickList.find((p) => p.mesh === hitMesh);
-        return found ? found.id : null;
+        // Recursive, because an animal's features are a child of its body: a
+        // click on a snout belongs to the animal it is attached to.
+        const hits = raycaster.intersectObjects(meshes, true);
+        for (const hit of hits) {
+            for (let node: THREE.Object3D | null = hit.object; node; node = node.parent) {
+                const found = this.pickList.find((p) => p.mesh === node);
+                if (found) return found.id;
+            }
+        }
+        return null;
     }
 
     select(id: number | null): void {
