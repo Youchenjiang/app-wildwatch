@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createMemory } from "../src/sim/memory";
+import { cosineSimilarity, createMemory } from "../src/sim/memory";
 
 describe("Memory", () => {
     it("records episodes and recalls them by cosine similarity", () => {
@@ -59,5 +59,24 @@ describe("Memory", () => {
         const r1 = m.recall([1, 0, 0, 0, 0, 0], 1);
         expect(r1).toHaveLength(1);
         expect(m.size()).toBe(2);
+    });
+
+    it("recent returns the newest traces first, capped by limit", () => {
+        const m = createMemory(8);
+        m.record([1, 0, 0, 0, 0, 0], 0.1, 1, 1);
+        m.record([0, 1, 0, 0, 0, 0], 0.2, 2, 2);
+        m.record([0, 0, 1, 0, 0, 0], 0.3, 3, 3);
+
+        expect(m.recent(2).map((e) => e.reward)).toEqual([3, 2]);
+        expect(m.recent(10).map((e) => e.age)).toEqual([3, 2, 1]);
+    });
+
+    it("cosineSimilarity scores identical, orthogonal and opposite vectors", () => {
+        expect(cosineSimilarity([1, 0, 0], [1, 0, 0])).toBeCloseTo(1, 5);
+        expect(cosineSimilarity([1, 0, 0], [0, 1, 0])).toBeCloseTo(0, 5);
+        expect(cosineSimilarity([1, 0, 0], [-1, 0, 0])).toBeCloseTo(-1, 5);
+        expect(cosineSimilarity([0, 0, 0], [1, 0, 0])).toBe(0);
+        // Padding zeros on trace features must not change the score.
+        expect(cosineSimilarity([1, 0], [1, 0, 0, 0])).toBeCloseTo(1, 5);
     });
 });
