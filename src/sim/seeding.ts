@@ -15,7 +15,7 @@
  * envelope that era was tuned in. Re-validate whenever an ecosystem mechanic
  * or era preset changes.
  */
-import { DEFAULT_BRAIN_SPEC, type WorldConfig } from "./world";
+import { DEFAULT_BRAIN_SPEC, type ReproductionMode, type WorldConfig } from "./world";
 import type { EraConfig } from "./era";
 
 /** Shared defaults for a run with no era (and for era fields left unset). */
@@ -25,7 +25,11 @@ export const BASE_SEEDING = {
     plantCount: 240,
 } as const;
 
-export function makeSeeding(seed = 20260907, era?: EraConfig): WorldConfig {
+export function makeSeeding(
+    seed = 20260907,
+    era?: EraConfig,
+    reproduction: ReproductionMode = "mixed",
+): WorldConfig {
     const plant = era?.plants ?? {};
     const counts = era?.seeding ?? {};
     return {
@@ -41,6 +45,7 @@ export function makeSeeding(seed = 20260907, era?: EraConfig): WorldConfig {
         turnLength: 100,
         populationCap: 500,
         mateRange: 3,
+        reproduction,
         mutationRate: 0.06,
         mutationSigma: 0.35,
         brainSpec: DEFAULT_BRAIN_SPEC,

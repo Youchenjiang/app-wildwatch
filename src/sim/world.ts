@@ -38,6 +38,22 @@ export interface Carrion {
     fromGeneration: number;
 }
 
+/**
+ * How a population propagates. Chosen at seeding and locked for the run, like
+ * the era presets and the season cycle (rule 2: nothing about a run may be
+ * changed after it is seeded).
+ *
+ * - `asexual`: every birth is a clone of one parent. No mate is ever sought.
+ * - `mixed`: mate with a nearby partner when one is found, clone otherwise.
+ *   The historical behaviour, kept as the default so the validated baselines
+ *   still describe a run seeded with no explicit choice.
+ * - `sexual`: a birth needs a partner. Without one the animal does not breed
+ *   and does not clone — it keeps its energy and waits, which is what makes
+ *   the mode viable rather than a slow extinction: animals that never meet a
+ *   mate stand around at high energy until one arrives.
+ */
+export type ReproductionMode = "asexual" | "mixed" | "sexual";
+
 /** Per-turn population statistics — the raw material for evolution charts. */
 export interface TurnRecord {
     turn: number;
@@ -53,6 +69,11 @@ export interface TurnRecord {
     maxFitness: Record<SpeciesKind, number>;
     /** Alive plants at snapshot time — the resource baseline for charts. */
     plantCount: number;
+    /** Cumulative births by how they were made. Kept apart so a mode choice is
+     * visible in the run rather than only in the config: with mateRange too
+     * small for encounters, mixed mode silently clones every time. */
+    sexualBirths: number;
+    asexualBirths: number;
     /** Mean and deepest recorded ancestry among the living, in generations
      * since the founders. How far back the population's forebears run. */
     livingMeanDepth: number;
@@ -88,7 +109,11 @@ export interface WorldConfig {
     turnLength: number;
     populationCap: number;
     /** Distance within which a same-species neighbor is eligible as a mate. */
+    /** How far an animal can reach for a partner. Only consulted by the
+     * sexual and mixed modes. */
     mateRange: number;
+    /** How this run's populations propagate. Defaults to "mixed". */
+    reproduction?: ReproductionMode;
     mutationRate: number;
     mutationSigma: number;
     brainSpec: BrainSpec;
@@ -183,6 +208,8 @@ export class World {
     private nextId = 1;
     private births: Record<SpeciesKind, number> = EMPTY_COUNTS();
     private deaths: Record<SpeciesKind, number> = EMPTY_COUNTS();
+    private sexualBirthTotal = 0;
+    private asexualBirthTotal = 0;
     /** Ancestry of every entity ever spawned, so kinship outlives the dead. */
     private readonly lineage = createLineage();
     private carrionMeals = 0;
@@ -752,9 +779,13 @@ export class World {
         }
         if (alive >= this.config.populationCap) return;
 
-        // Prefer sexual reproduction with a nearby eligible mate; fall back
-        // to asexual cloning so lone survivors can still propagate.
-        const mate = this.findMate(e);
+        // `asexual` never looks for a partner at all, so it cannot accidentally
+        // become sexual when one happens to be standing nearby.
+        const mode = this.config.reproduction ?? "mixed";
+        const mate = mode === "asexual" ? null : this.findMate(e);
+        // `sexual` without a partner is not a birth: the animal waits, keeping
+        // its energy and its cooldown clear, and tries again next tick.
+        if (mate === null && mode === "sexual") return;
         // Newborns start well below the breeding threshold: they must eat
         // before they can reproduce, which tempers exponential booms.
         const childEnergy = s.reproduceEnergy * 0.25;
@@ -768,8 +799,10 @@ export class World {
             e.energy -= s.reproduceCost / 2;
             mate.energy -= s.reproduceCost / 2;
             mate.reproduceCooldown = REPRODUCE_COOLDOWN;
+            this.sexualBirthTotal += s.litterSize;
         } else {
             e.energy -= s.reproduceCost;
+            this.asexualBirthTotal += s.litterSize;
         }
         e.reproduceCooldown = REPRODUCE_COOLDOWN;
         this.births[s.kind] += s.litterSize;
@@ -898,6 +931,8 @@ export class World {
             avgFitness: EMPTY_COUNTS(),
             maxFitness: EMPTY_COUNTS(),
             plantCount: this.plants.filter((plant) => plant.alive).length,
+            sexualBirths: this.sexualBirthTotal,
+            asexualBirths: this.asexualBirthTotal,
             livingMeanDepth: 0,
             livingMaxDepth: 0,
             kinDensity: 0,
@@ -931,6 +966,15 @@ export class World {
     /** The species whose extinction ended the run, or null while it continues. */
     get gameOver(): SpeciesKind | null {
         return this.gameOverBy;
+    }
+
+    /** Cumulative births made with a partner, and by cloning. */
+    get sexualBirths(): number {
+        return this.sexualBirthTotal;
+    }
+
+    get asexualBirths(): number {
+        return this.asexualBirthTotal;
     }
 
     /** Lifetime count of corpses eaten by carnivores. */
