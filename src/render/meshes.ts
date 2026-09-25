@@ -19,9 +19,9 @@ export class MeshPool {
     private readonly npcMeshes = new Map<number, THREE.Mesh>();
     private readonly plantMeshes = new Map<number, THREE.Mesh>();
     private readonly carrionMeshes = new Map<number, THREE.Mesh>();
-    private readonly npcGeometry = new THREE.ConeGeometry(0.6, 1.4, 7);
-    private readonly plantGeometry = new THREE.CylinderGeometry(0.18, 0.28, 0.5, 5);
-    private readonly carrionGeometry = new THREE.SphereGeometry(0.45, 6, 5);
+    private readonly npcGeometry = new THREE.ConeGeometry(0.9, 2.0, 7);
+    private readonly plantGeometry = new THREE.CylinderGeometry(0.35, 0.5, 0.8, 6);
+    private readonly carrionGeometry = new THREE.SphereGeometry(0.65, 8, 6);
     private readonly plantMaterial = new THREE.MeshLambertMaterial({ color: 0x3fae5a });
     private readonly carrionMaterial = new THREE.MeshLambertMaterial({ color: 0x8a7a5c });
     // Seasonal tint: plants lerp from dry brown (trough) to lush green (peak).
