@@ -65,6 +65,14 @@ export interface WorldConfig {
     mutationRate: number;
     mutationSigma: number;
     brainSpec: BrainSpec;
+    /**
+     * Ticks per seasonal plant cycle; 0 disables seasons (default). The regrow
+     * rate oscillates around plantRegrowPerTick, so the long-run average is
+     * unchanged — only the timing of abundance changes.
+     */
+    plantSeasonLength?: number;
+    /** 0..1 seasonal trough depth (default 0.5): 1 starves plants fully. */
+    plantSeasonDepth?: number;
     /** Episodic memory capacity per entity (default 64). */
     memoryCapacity?: number;
     /** Population-level life grid cell size (default 6). */
@@ -106,6 +114,26 @@ export function turnEnergyMultiplier(turnCost: number, steerMag: number, thrust:
     return 1 + turnCost * steerMag * steerMag * (0.3 + 0.7 * thrust);
 }
 
+/**
+ * Seasonal regrow multiplier at a given tick: oscillates around 1 with
+ * amplitude `depth` (trough = 1 - depth, peak = 1 + depth). With seasons
+ * disabled (seasonLength <= 0) the multiplier is always 1.
+ */
+export function seasonalRegrowMultiplier(tick: number, seasonLength: number, depth: number): number {
+    if (seasonLength <= 0) return 1;
+    return 1 - depth * Math.sin((2 * Math.PI * tick) / seasonLength);
+}
+
+/**
+ * Normalized season position for visuals: 0 = deepest trough, 1 = peak.
+ * Returns 0.5 (the neutral midpoint) when seasons are disabled.
+ */
+export function seasonAbundanceAt(tick: number, seasonLength: number, depth: number): number {
+    if (seasonLength <= 0) return 0.5;
+    const m = seasonalRegrowMultiplier(tick, seasonLength, depth);
+    return (m - (1 - depth)) / (2 * depth);
+}
+
 export class World {
     config: WorldConfig;
     rng: RNG;
@@ -124,6 +152,8 @@ export class World {
     private nextId = 1;
     private births: Record<SpeciesKind, number> = EMPTY_COUNTS();
     private deaths: Record<SpeciesKind, number> = EMPTY_COUNTS();
+    /** Fractional regrow carry-over so seasonal rates stay smooth. */
+    private plantRegrowAccum = 0;
     /** Set once either species has died out; the run is over (rules forbid re-seeding). */
     private gameOverBy: SpeciesKind | null = null;
 
@@ -259,9 +289,20 @@ export class World {
         this.tick++;
 
         // Plants regrow at a steady rate, capped by world carrying capacity.
-        for (let i = 0; i < this.config.plantRegrowPerTick; i++) {
-            if (this.plants.length >= this.config.maxPlants) break;
+        // Seasonal cycles (plantSeasonLength > 0) modulate the rate around the
+        // same average: the trough starves herbivores and the peak booms them,
+        // an environmental survival pressure distinct from predation.
+        const seasonLength = this.config.plantSeasonLength ?? 0;
+        const seasonDepth = this.config.plantSeasonDepth ?? 0.5;
+        this.plantRegrowAccum +=
+            this.config.plantRegrowPerTick * seasonalRegrowMultiplier(this.tick, seasonLength, seasonDepth);
+        while (this.plantRegrowAccum >= 1) {
+            if (this.plants.length >= this.config.maxPlants) {
+                this.plantRegrowAccum = 0;
+                break;
+            }
             this.spawnPlant();
+            this.plantRegrowAccum -= 1;
         }
 
         this.rebuildIndexes();
@@ -727,6 +768,14 @@ export class World {
     /** The species whose extinction ended the run, or null while it continues. */
     get gameOver(): SpeciesKind | null {
         return this.gameOverBy;
+    }
+
+    /**
+     * Normalized current season position for visuals: 0 = deepest trough,
+     * 1 = peak; 0.5 when seasons are disabled.
+     */
+    get seasonAbundance(): number {
+        return seasonAbundanceAt(this.tick, this.config.plantSeasonLength ?? 0, this.config.plantSeasonDepth ?? 0.5);
     }
 
     /**
