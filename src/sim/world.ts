@@ -720,6 +720,16 @@ export class World {
     }
 
     /**
+     * Observer tool (docs/game-rules.md "觀察者工具"): the sensory inputs an
+     * entity is currently receiving — exactly what updateEntity feeds the
+     * brain. Read-only, so the inspector can show which episodic memories
+     * match the entity's present situation.
+     */
+    inputsFor(e: Entity): number[] {
+        return this.buildInputs(e, this.sense(e));
+    }
+
+    /**
      * Observer tool (docs/game-rules.md "觀察者工具"): end the run early.
      * Purely observational from the sim's perspective — it stops the loop;
      * it never edits entity state.

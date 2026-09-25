@@ -13,7 +13,7 @@
  */
 export interface Episode {
     feature: number[];      // normalized sense signature
-    actionHint: number;     // signed steer hint that worked (+/-)
+    actionHint: number;     // steer (∈ [-1, 1]) the entity was applying when the reward landed
     reward: number;         // energy gained this event
     age: number;            // entity age when recorded
 }
@@ -28,8 +28,25 @@ export interface Memory {
         feature: readonly number[],
         limit: number,
     ): ReadonlyArray<{ episode: Episode; similarity: number }>;
+    /** The most recent traces, newest first (observer lens for the inspector). */
+    recent(limit: number): ReadonlyArray<Episode>;
     /** Per-tick decay of trace weights by age distance. */
     age(age: number): void;
+}
+
+/** Cosine similarity of two feature vectors; 0 when either is zero-length. */
+export function cosineSimilarity(a: readonly number[], b: readonly number[]): number {
+    const n = Math.min(a.length, b.length);
+    let dot = 0;
+    let na = 0;
+    let nb = 0;
+    for (let i = 0; i < n; i++) {
+        dot += a[i] * b[i];
+        na += a[i] * a[i];
+        nb += b[i] * b[i];
+    }
+    const denom = Math.sqrt(na) * Math.sqrt(nb);
+    return denom > 0 ? dot / denom : 0;
 }
 
 const MAX_IDX = 20;    // feature length capped to the sim sense vector (6) in practice
@@ -50,25 +67,16 @@ export function createMemory(capacity = LARGER_CAP): Memory {
         },
 
         recall(feature: readonly number[], limit: number): ReadonlyArray<{ episode: Episode; similarity: number }> {
-            const f = feature;
-            const fl = Math.min(f.length, MAX_IDX);
             const out: { episode: Episode; similarity: number }[] = [];
             for (const t of traces) {
-                const tf = t.feature;
-                let dot = 0;
-                let nf = 0;
-                let nt = 0;
-                for (let j = 0; j < fl; j++) {
-                    dot += f[j] * tf[j];
-                    nf += f[j] * f[j];
-                    nt += tf[j] * tf[j];
-                }
-                const denom = Math.sqrt(nf) * Math.sqrt(nt);
-                const sim = denom > 0 ? dot / denom : 0;
-                out.push({ episode: t, similarity: sim });
+                out.push({ episode: t, similarity: cosineSimilarity(feature, t.feature) });
             }
             out.sort((a, b) => b.similarity - a.similarity);
             return out.slice(0, limit);
+        },
+
+        recent(limit: number): ReadonlyArray<Episode> {
+            return traces.slice(-limit).reverse();
         },
 
         age(age: number): void {
