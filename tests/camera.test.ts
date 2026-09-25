@@ -58,6 +58,29 @@ function stubWindow(): void {
     vi.stubGlobal("window", { addEventListener: vi.fn(), removeEventListener: vi.fn() });
 }
 
+/** An observer attached to a real listener stub, plus a way to send it a wheel. */
+function wiredObserver(): {
+    ctx: RenderContext;
+    observer: ObserverCamera;
+    scroll: (deltaY: number) => { preventDefault: ReturnType<typeof vi.fn> };
+    listenerCount: (type: string) => number;
+} {
+    stubWindow();
+    const ctx = renderContext();
+    const stub = listenerDom();
+    const observer = new ObserverCamera(ctx.camera, stub.dom, 200, 200);
+    return {
+        ctx,
+        observer,
+        scroll: (deltaY) => {
+            const event = { deltaY, preventDefault: vi.fn() };
+            stub.fire("wheel", event);
+            return event;
+        },
+        listenerCount: stub.listenerCount,
+    };
+}
+
 afterEach(() => {
     vi.unstubAllGlobals();
 });
@@ -113,5 +136,55 @@ describe("viewport resize", () => {
         expect(ctx.camera.right / ctx.camera.top).toBeCloseTo(2, 9);
         expect(ctx.camera.top).toBeCloseTo(ctx.view / 4, 9);
         observer.dispose();
+    });
+});
+
+describe("wheel zoom direction", () => {
+    it("zooms in when scrolling up", () => {
+        const { ctx, observer, scroll } = wiredObserver();
+
+        scroll(-120);
+
+        // Scrolling up has to pull the view closer, not push it away: the
+        // handler used to treat a negative deltaY as zoom *out*.
+        expect(observer.getZoom(), "scrolling up should zoom in").toBeGreaterThan(1);
+        expect(ctx.camera.top).toBeLessThan(ctx.view);
+        expect(ctx.camera.top).toBeCloseTo(ctx.view / observer.getZoom(), 9);
+        observer.dispose();
+    });
+
+    it("zooms out when scrolling down", () => {
+        const { ctx, observer, scroll } = wiredObserver();
+
+        scroll(120);
+
+        expect(observer.getZoom(), "scrolling down should zoom out").toBeLessThan(1);
+        expect(ctx.camera.top).toBeGreaterThan(ctx.view);
+        expect(ctx.camera.top).toBeCloseTo(ctx.view / observer.getZoom(), 9);
+        observer.dispose();
+    });
+
+    it("treats the two directions as opposites, so scrolling back undoes a scroll", () => {
+        const { ctx, observer, scroll } = wiredObserver();
+
+        scroll(-120);
+        const zoomedIn = ctx.camera.top;
+        scroll(120);
+
+        expect(zoomedIn).toBeLessThan(ctx.view);
+        expect(observer.getZoom()).toBeCloseTo(1, 9);
+        expect(ctx.camera.top).toBeCloseTo(ctx.view, 9);
+        observer.dispose();
+    });
+
+    it("swallows the gesture so the page does not scroll underneath the view", () => {
+        const { observer, scroll, listenerCount } = wiredObserver();
+        expect(listenerCount("wheel")).toBe(1);
+
+        const event = scroll(120);
+
+        expect(event.preventDefault).toHaveBeenCalledTimes(1);
+        observer.dispose();
+        expect(listenerCount("wheel")).toBe(0);
     });
 });
