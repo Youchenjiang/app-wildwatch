@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import type { EraConfig } from "../sim/era";
 
 export interface RenderContext {
     renderer: THREE.WebGLRenderer;
@@ -179,6 +180,37 @@ export function defaultAtmosphereColors(): AtmosphereColors {
         groundTrough: new THREE.Color(0x8a8878),
         wallPeak: new THREE.Color(0x4a6a52),
         wallTrough: new THREE.Color(0x808080),
+    };
+}
+
+/**
+ * Resolve an era's palette into atmosphere colors.
+ *
+ * The biome's ambient colors (sky background/fog, ground, wall) come straight
+ * from the era. The *light* colors must not: an era's sky is a dark void color
+ * (grassland is near-black), so using it as the sun would render the whole
+ * world at ~10% brightness. Instead we tint a bright base toward the era's sky
+ * hue, which keeps each era's color temperature (warm desert, cold ice age)
+ * while guaranteeing the scene stays lit.
+ */
+export function atmosphereColorsForEra(era: EraConfig): AtmosphereColors {
+    const sky = new THREE.Color(era.skyColor);
+    const skyTrough = new THREE.Color(era.skyTroughColor);
+    const tint = (c: THREE.Color, towardWhite: number) =>
+        c.clone().lerp(new THREE.Color(0xffffff), towardWhite);
+    return {
+        bgPeak: new THREE.Color(era.skyColor),
+        bgTrough: new THREE.Color(era.skyTroughColor),
+        hemiSkyPeak: tint(sky, 0.72),
+        hemiSkyTrough: tint(skyTrough, 0.72),
+        hemiGroundPeak: new THREE.Color(era.groundColor),
+        hemiGroundTrough: new THREE.Color(era.groundTroughColor),
+        sunPeak: tint(sky, 0.85),
+        sunTrough: tint(skyTrough, 0.85),
+        groundPeak: new THREE.Color(era.groundColor),
+        groundTrough: new THREE.Color(era.groundTroughColor),
+        wallPeak: new THREE.Color(era.groundColor),
+        wallTrough: new THREE.Color(era.groundTroughColor),
     };
 }
 

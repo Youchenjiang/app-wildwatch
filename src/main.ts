@@ -1,8 +1,13 @@
 import "./style.css";
-import * as THREE from "three";
 import { World } from "./sim/world";
 import { makeSeeding } from "./sim/seeding";
-import { createRenderContext, defaultAtmosphereColors, resizeContext, type RenderContext } from "./render/scene";
+import {
+    atmosphereColorsForEra,
+    createRenderContext,
+    defaultAtmosphereColors,
+    resizeContext,
+    type RenderContext,
+} from "./render/scene";
 import { MeshPool } from "./render/meshes";
 import { ObserverCamera } from "./render/camera";
 import { createHud } from "./ui/hud";
@@ -10,31 +15,16 @@ import { createControls } from "./ui/controls";
 import { createInspector } from "./ui/inspector";
 import { createWelcome } from "./ui/welcome";
 import { ReplayRecorder } from "./observe/replay";
-import { grasslandEra, iceAgeEra } from "./sim/era";
+import { desertEra, grasslandEra, iceAgeEra } from "./sim/era";
 
 import type { EraConfig } from "./sim/era";
 
 const container = document.getElementById("app")!;
 
-/** Map an optional era config to atmosphere colors for the render context. */
-function eraAtmosphereColors(era?: EraConfig): import("./render/scene").AtmosphereColors | undefined {
-    if (!era) return undefined;
-    return {
-        bgPeak: new THREE.Color(era.skyColor),
-        bgTrough: new THREE.Color(era.skyTroughColor),
-        hemiSkyPeak: new THREE.Color(era.skyColor),
-        hemiSkyTrough: new THREE.Color(era.skyTroughColor),
-        hemiGroundPeak: new THREE.Color(era.groundColor),
-        hemiGroundTrough: new THREE.Color(era.groundTroughColor),
-        sunPeak: new THREE.Color(era.skyColor),
-        sunTrough: new THREE.Color(era.skyTroughColor),
-        groundPeak: new THREE.Color(era.groundColor),
-        groundTrough: new THREE.Color(era.groundTroughColor),
-        wallPeak: new THREE.Color(era.groundColor),
-        wallTrough: new THREE.Color(era.groundTroughColor),
-    };
+/** Atmosphere colors for the active era, or the neutral default with no era. */
+function eraAtmosphereColors(era?: EraConfig) {
+    return era ? atmosphereColorsForEra(era) : defaultAtmosphereColors();
 }
-
 
 let world = new World(makeSeeding());
 let ctx: RenderContext = createRenderContext(
@@ -80,7 +70,7 @@ let selectedEra: import("./sim/era").EraConfig | undefined;
 createWelcome(container, (era) => {
     selectedEra = era;
     paused = false;
-}, [grasslandEra, iceAgeEra]);
+}, [grasslandEra, iceAgeEra, desertEra]);
 
 window.addEventListener("keydown", (event) => {
     if (event.code === "Space") {
@@ -128,7 +118,7 @@ ctx.renderer.domElement.addEventListener("pointerup", (e) => {
 
 function restart(): void {
     world = new World(selectedEra ? makeSeeding(undefined, selectedEra) : makeSeeding());
-    ctx.atmosphere.setColors(eraAtmosphereColors(world.config.era) ?? defaultAtmosphereColors());
+    ctx.atmosphere.setColors(eraAtmosphereColors(world.config.era));
 
     pool.setEra(world.config.era);
     recorder.reset();
