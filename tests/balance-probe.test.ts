@@ -63,7 +63,15 @@ function runSeeding(label: string, overrides: Partial<WorldConfig>): number {
  */
 const ERAS: readonly EraConfig[] = [grasslandEra, iceAgeEra, desertEra];
 
-function runEra(era: EraConfig): { ticks: number; herb: number; carn: number } {
+function runEra(era: EraConfig): {
+    ticks: number;
+    herb: number;
+    carn: number;
+    carrionMeals: number;
+    kinMeals: number;
+    kinAncestor: number;
+    kinDescendant: number;
+} {
     const world = new World(makeSeeding(20260907, era));
     let endedAt = -1;
     for (let i = 1; i <= MAX_TICKS; i++) {
@@ -77,9 +85,17 @@ function runEra(era: EraConfig): { ticks: number; herb: number; carn: number } {
     const herb = world.populationOf("herbivore");
     const carn = world.populationOf("carnivore");
     console.log(
-        `era ${era.name.padEnd(10)} ${status}, final h=${herb} c=${carn}, season=${era.plants.seasonLength}/${era.plants.seasonDepth}`,
+        `era ${era.name.padEnd(10)} ${status}, final h=${herb} c=${carn}, season=${era.plants.seasonLength}/${era.plants.seasonDepth}, kin=${world.kinMealsEaten}/${world.carrionMealsEaten}`,
     );
-    return { ticks: endedAt < 0 ? MAX_TICKS : endedAt, herb, carn };
+    return {
+        ticks: endedAt < 0 ? MAX_TICKS : endedAt,
+        herb,
+        carn,
+        carrionMeals: world.carrionMealsEaten,
+        kinMeals: world.kinMealsEaten,
+        kinAncestor: world.kinAncestorMealsEaten,
+        kinDescendant: world.kinDescendantMealsEaten,
+    };
 }
 
 describe("era sweep", () => {
@@ -98,6 +114,19 @@ describe("era sweep", () => {
         const grassland = results.find((r) => r.era.name === "Grassland")!;
         expect(grassland.herb, "grassland baseline drifted").toBe(31);
         expect(grassland.carn, "grassland baseline drifted").toBe(41);
+
+        // Kin feeding is only observable in a real run: it needs a parent and
+        // its offspring to both die inside the same reach of a scavenger. A
+        // unit test with a hand-placed corpse cannot catch the failure that
+        // actually happened here — asking for kinship in one direction only,
+        // which silently reported zero for the whole lineage forever. So pin
+        // it against the live run instead of a fixture.
+        expect(grassland.carrionMeals, "no corpse was ever eaten").toBeGreaterThan(0);
+        expect(grassland.kinMeals, "kin feeding silently stopped firing").toBeGreaterThan(0);
+        expect(
+            grassland.kinAncestor + grassland.kinDescendant,
+            "kin split does not add up to the kin total",
+        ).toBe(grassland.kinMeals);
     }, 240000);
 });
 

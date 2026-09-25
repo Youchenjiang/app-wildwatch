@@ -55,7 +55,8 @@ describe("carrion cycle", () => {
         // Plant a corpse right on the carnivore.
         const carn = world.entities[0]!;
         const before = carn.energy;
-        world.carrions.push({ id: 9999, x: carn.pos.x, y: carn.pos.y, energy: 40, alive: true });
+        // fromId is the animal the body used to be; 0 means an unrelated one.
+        world.carrions.push({ id: 9999, x: carn.pos.x, y: carn.pos.y, energy: 40, alive: true, fromId: 0 });
         world.tickStep();
         expect(carn.energy).toBeGreaterThan(before);
         expect(world.carrions).toHaveLength(0);

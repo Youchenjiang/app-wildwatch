@@ -95,14 +95,17 @@ describe("meal recording", () => {
     it("records a carnivore scavenging carrion, with the corpse it ate", () => {
         const world = new World(makeConfig({ herbivoreCount: 0, carnivoreCount: 1, plantCount: 0 }));
         const carn = world.entities[0];
-        world.carrions.push({ id: 4242, x: carn.pos.x, y: carn.pos.y, energy: 33, alive: true });
+        const corpse = { id: 4242, x: carn.pos.x, y: carn.pos.y, energy: 33, alive: true, fromId: 777 };
+        world.carrions.push(corpse);
 
         world.tickStep();
 
         const eaten = carn.meals.recent(1)[0];
         expect(eaten.source).toBe("carrion");
         expect(eaten.energy).toBe(33);
-        expect(eaten.victimId).toBe(4242);
+        // The meal names the animal the body was, not the transient corpse id.
+        expect(eaten.victimId).toBe(777);
+        expect(eaten.kin).toBeUndefined();
         expect(carn.meals.counts()).toEqual({ plant: 0, prey: 0, carrion: 1 });
     });
 
