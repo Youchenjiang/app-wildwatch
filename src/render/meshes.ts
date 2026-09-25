@@ -18,8 +18,10 @@ export interface RenderSubjects {
 export class MeshPool {
     private readonly scene: THREE.Scene;
     private readonly npcMeshes = new Map<number, THREE.Mesh>();
+    private readonly npcShadows = new Map<number, THREE.Mesh>();
     private readonly plantMeshes = new Map<number, THREE.Mesh>();
     private readonly carrionMeshes = new Map<number, THREE.Mesh>();
+    private readonly shadowMat: THREE.MeshBasicMaterial;
     /** Sphere body + small nose cone so heading stays readable from above. */
     private readonly npcGeometry = MeshPool.buildAnimalGeometry();
     private static buildAnimalGeometry(): THREE.BufferGeometry {
@@ -66,6 +68,13 @@ export class MeshPool {
         this.ring.rotation.x = -Math.PI / 2;
         this.ring.visible = false;
         scene.add(this.ring);
+
+        this.shadowMat = new THREE.MeshBasicMaterial({
+            color: 0x1a1a1a,
+            transparent: true,
+            opacity: 0.32,
+            depthWrite: false,
+        });
     }
 
     private materialFor(color: number, vertexColors = false): THREE.MeshLambertMaterial {
@@ -171,8 +180,22 @@ export class MeshPool {
             mesh.position.set(e.pos.x, scale * 0.6, e.pos.y);
             mesh.rotation.y = e.angle;
             this.pickList.push({ id: e.id, mesh });
+
+            let shadow = this.npcShadows.get(e.id);
+            if (!shadow) {
+                const shadowGeo = new THREE.CircleGeometry(1, 12);
+                shadow = new THREE.Mesh(shadowGeo, this.shadowMat);
+                shadow.rotation.x = -Math.PI / 2;
+                this.scene.add(shadow);
+                this.npcShadows.set(e.id, shadow);
+            }
+            const shadowScale = scale * 0.9;
+            shadow.scale.setScalar(shadowScale);
+            shadow.position.set(e.pos.x, 0.02, e.pos.y);
+            (shadow.material as THREE.MeshBasicMaterial).opacity = 0.22 + 0.14 * Math.min(1, e.energy / e.species.maxEnergy);
         }
         this.reap(this.npcMeshes, seenNpc);
+        this.reap(this.npcShadows, seenNpc);
         this.updateRing();
     }
 
@@ -195,8 +218,22 @@ export class MeshPool {
             mesh.position.set(n.x, scale * 0.6, n.y);
             mesh.rotation.y = n.angle;
             this.pickList.push({ id: n.id, mesh });
+
+            let shadow = this.npcShadows.get(n.id);
+            if (!shadow) {
+                const shadowGeo = new THREE.CircleGeometry(1, 12);
+                shadow = new THREE.Mesh(shadowGeo, this.shadowMat);
+                shadow.rotation.x = -Math.PI / 2;
+                this.scene.add(shadow);
+                this.npcShadows.set(n.id, shadow);
+            }
+            const shadowScale = scale * 0.9;
+            shadow.scale.setScalar(shadowScale);
+            shadow.position.set(n.x, 0.02, n.y);
+            (shadow.material as THREE.MeshBasicMaterial).opacity = 0.22 + 0.14 * n.energy01;
         }
         this.reap(this.npcMeshes, seenNpc);
+        this.reap(this.npcShadows, seenNpc);
         this.updateRing();
     }
 
