@@ -53,6 +53,16 @@ export interface TurnRecord {
     maxFitness: Record<SpeciesKind, number>;
     /** Alive plants at snapshot time — the resource baseline for charts. */
     plantCount: number;
+    /** Mean and deepest recorded ancestry among the living, in generations
+     * since the founders. How far back the population's forebears run. */
+    livingMeanDepth: number;
+    livingMaxDepth: number;
+    /** Share of living animals with at least one living ancestor (any depth up
+     * to the cap), and the mean generations up to it over those that have one.
+     * A high share means the population is still one family rather than
+     * separate lines, which is what lineage thinning would erode. */
+    kinDensity: number;
+    meanNearestKin: number;
     /** Cumulative corpses eaten by carnivores, and how many of those were
      * blood kin of the eater. Cumulative, so the pair yields a lifetime rate
      * rather than a session one. */
@@ -828,6 +838,10 @@ export class World {
             avgFitness: EMPTY_COUNTS(),
             maxFitness: EMPTY_COUNTS(),
             plantCount: 0,
+            livingMeanDepth: 0,
+            livingMaxDepth: 0,
+            kinDensity: 0,
+            meanNearestKin: 0,
             carrionMeals: this.carrionMeals,
             kinMeals: this.kinMeals,
             kinAncestorMeals: this.kinAncestorMeals,
@@ -851,6 +865,27 @@ export class World {
                 : 0;
         }
         record.plantCount = this.plants.filter((p) => p.alive).length;
+
+        // Living ancestry: one upward walk per living animal, so this is a
+        // per-turn cost rather than a per-tick one.
+        const living = this.entities.filter((e) => e.alive);
+        const livingIds = new Set(living.map((e) => e.id));
+        let depthSum = 0;
+        let withKin = 0;
+        let kinGapSum = 0;
+        for (const e of living) {
+            depthSum += e.generation;
+            if (e.generation > record.livingMaxDepth) record.livingMaxDepth = e.generation;
+            const gap = this.lineage.nearestLivingAncestor(e.id, livingIds);
+            if (gap !== null) {
+                withKin++;
+                kinGapSum += gap;
+            }
+        }
+        record.livingMeanDepth = living.length ? depthSum / living.length : 0;
+        record.kinDensity = living.length ? withKin / living.length : 0;
+        record.meanNearestKin = withKin ? kinGapSum / withKin : 0;
+
         this.records.push(record);
         this.turn++;
         this.lifeGrid.decay(

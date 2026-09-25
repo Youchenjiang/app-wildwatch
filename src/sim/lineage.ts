@@ -40,6 +40,18 @@ export interface Lineage {
      */
     depthOf(ancestorId: number, descendantId: number): number | null;
     /**
+     * How many generations up the closest *living* ancestor sits, or null when
+     * none of them is alive within the depth cap.
+     *
+     * Walks upward only. That is the direction that reads as lineage thinning:
+     * a population whose animals still have living forebears a generation or
+     * two up is a tight family, while one where nothing is left alive behind
+     * each animal has scattered into separate lines. Descendants are
+     * deliberately not counted — an animal's offspring outliving it is the
+     * ordinary case, not evidence of anything.
+     */
+    nearestLivingAncestor(id: number, living: ReadonlySet<number>): number | null;
+    /**
      * How `otherId` is related to `id` by descent, or null when unrelated.
      *
      * Descent runs both ways and the two directions behave very differently in
@@ -106,6 +118,24 @@ export function createLineage(): Lineage {
 
         depthOf(ancestorId: number, descendantId: number): number | null {
             return walk(ancestorId, descendantId);
+        },
+
+        nearestLivingAncestor(id: number, living: ReadonlySet<number>): number | null {
+            let frontier: number[] = parentsOf(id);
+            const seen = new Set<number>(frontier);
+            for (let depth = 1; depth <= MAX_ANCESTRY_DEPTH && frontier.length > 0; depth++) {
+                const next: number[] = [];
+                for (const ancestorId of frontier) {
+                    if (living.has(ancestorId)) return depth;
+                    for (const parent of parentsOf(ancestorId)) {
+                        if (seen.has(parent)) continue;
+                        seen.add(parent);
+                        next.push(parent);
+                    }
+                }
+                frontier = next;
+            }
+            return null;
         },
 
         kinTo(id: number, otherId: number): KinRelation | null {
