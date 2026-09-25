@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { World, type WorldConfig } from "../src/sim/world";
+import { World, type ReproductionMode, type WorldConfig } from "../src/sim/world";
 import { makeSeeding } from "../src/sim/seeding";
 import { desertEra, grasslandEra, iceAgeEra, type EraConfig } from "../src/sim/era";
 
@@ -147,6 +147,62 @@ describe("era sweep", () => {
             grassland.kinAncestor + grassland.kinDescendant,
             "kin split does not add up to the kin total",
         ).toBe(grassland.kinMeals);
+    }, 240000);
+});
+
+/**
+ * Reproduction mode — a seeding choice the player makes, so it is validated the
+ * same way an era preset is: `asexual` must be exactly the locked baseline
+ * (cloning is what the default has always done in practice), and `sexual` must
+ * actually make sexual births, since a forced-sexual run is the whole point of
+ * being able to choose it.
+ *
+ * `sexual` is NOT asserted to survive. At these densities a partner for a
+ * carnivore is rare enough that the predator line goes extinct in a few
+ * thousand ticks, which is a balance question rather than a validation one —
+ * so the outcome is reported and left visible instead of being asserted away.
+ */
+describe("reproduction mode sweep", () => {
+    const runMode = (mode: ReproductionMode) => {
+        const world = new World(makeSeeding(20260907, grasslandEra, mode));
+        let endedAt = -1;
+        for (let i = 1; i <= MAX_TICKS; i++) {
+            world.tickStep();
+            if (world.gameOver !== null) {
+                endedAt = i;
+                break;
+            }
+        }
+        const status = endedAt < 0 ? `SURVIVED to ${MAX_TICKS}` : `ended ${endedAt} (${world.gameOver})`;
+        const result = {
+            mode,
+            ticks: endedAt < 0 ? MAX_TICKS : endedAt,
+            herb: world.populationOf("herbivore"),
+            carn: world.populationOf("carnivore"),
+            sexual: world.sexualBirths,
+            asexual: world.asexualBirths,
+        };
+        console.log(
+            `mode ${mode.padEnd(8)} ${status}, final h=${result.herb} c=${result.carn}, ` +
+                `sexual=${result.sexual} asexual=${result.asexual}`,
+        );
+        return result;
+    };
+
+    it("every selectable mode does what it says", () => {
+        const asexual = runMode("asexual");
+        const sexual = runMode("sexual");
+
+        // Asexual must reproduce the locked grassland baseline exactly: choosing
+        // it explicitly is not allowed to be a different run from the default.
+        expect(asexual.ticks, "asexual mode did not sustain the baseline").toBe(TARGET_TICKS);
+        expect(asexual.herb, "asexual baseline drifted").toBe(31);
+        expect(asexual.carn, "asexual baseline drifted").toBe(41);
+        expect(asexual.sexual, "asexual mode mated anyway").toBe(0);
+
+        // Sexual must actually fire, and never quietly fall back to cloning.
+        expect(sexual.sexual, "sexual mode never mated").toBeGreaterThan(0);
+        expect(sexual.asexual, "sexual mode cloned anyway").toBe(0);
     }, 240000);
 });
 
