@@ -1,5 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { gameOverVeil, kinStatText } from "../src/ui/hud";
+import { depthScale, gameOverVeil, kinStatText } from "../src/ui/hud";
+import type { TurnRecord } from "../src/sim/world";
+
+const depthRecord = (livingMaxDepth: number): TurnRecord => ({ livingMaxDepth }) as TurnRecord;
+
+describe("lineage chart scale", () => {
+    it("spans the deepest reading in the window", () => {
+        // Both depth lines share this, so the mean reads against the deepest
+        // rather than each filling the chart on its own.
+        expect(depthScale([depthRecord(3), depthRecord(41), depthRecord(12)])).toBe(41);
+    });
+
+    it("never returns zero, which would divide the chart by nothing", () => {
+        expect(depthScale([])).toBe(1);
+        expect(depthScale([depthRecord(0), depthRecord(0)])).toBe(1);
+    });
+});
 
 describe("game-over veil", () => {
     it("stays hidden while the run is alive", () => {
