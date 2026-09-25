@@ -33,6 +33,9 @@ export interface Carrion {
     alive: boolean;
     /** The animal this body used to be, so its lineage stays knowable. */
     fromId: number;
+    /** That animal's generation, so a scavenged meal can report how deep into
+     * the lineage the body sat — the same figure a hunted kill reports. */
+    fromGeneration: number;
 }
 
 /** Per-turn population statistics — the raw material for evolution charts. */
@@ -687,7 +690,13 @@ export class World {
             // Checking only one way quietly reports zero forever.
             const kin = this.lineage.kinTo(e.id, c.fromId);
             e.memory.record(inputs, steer, gained, e.age);
-            const meal = { source: "carrion" as const, energy: gained, age: e.age, victimId: c.fromId };
+            const meal = {
+                source: "carrion" as const,
+                energy: gained,
+                age: e.age,
+                victimId: c.fromId,
+                victimGeneration: c.fromGeneration,
+            };
             e.meals.add(
                 kin === null
                     ? meal
@@ -778,6 +787,7 @@ export class World {
                 energy: e.energy,
                 alive: true,
                 fromId: e.id,
+                fromGeneration: e.generation,
             });
         }
     }
