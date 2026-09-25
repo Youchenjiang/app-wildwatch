@@ -27,7 +27,36 @@
   - `docs/<short-name>`：文件撰寫與維護
   - `style/<short-name>`：UI 樣式與排版調整
   - `chore/<short-name>`：相依套件與工程維護
-- 若分支過期，發起 PR 前請先針對 `main` 進行 Rebase。
+
+### 串接 PR 工作流程 (Chained / Stacked PRs)
+
+當一批功能需要依序合入時，採用 **rolling rebase** 策略，而非將所有分支都堆在同一個長分支上：
+
+```
+main ──▶ merge PR #1 ──▶ merge PR #2 ──▶ merge PR #N
+              ↑                ↑                ↑
+     feature/foo     feature/bar      feature/baz
+```
+
+**操作步驟（每一輪）**：
+
+1. 前一個 PR 合併進 `main` 後，立即拉取最新遠端：
+   ```bash
+   git fetch origin
+   ```
+2. 將下一個功能分支 rebase 至最新的 `origin/main`：
+   ```bash
+   git rebase origin/main feature/<next-name>
+   ```
+3. 確認本地通過所有檢查後再 push 並開 PR：
+   ```bash
+   npm run typecheck && npm run test:policy && npm test
+   git push --force-with-lease origin feature/<next-name>
+   ```
+4. 在 GitHub 上將 PR 的 **base branch 設為 `main`**（不要設為前一個功能分支）。
+
+> [!IMPORTANT]
+> Rebase 後必須使用 `--force-with-lease` 而非 `--force`，以防意外覆蓋他人推送。
 
 ---
 
