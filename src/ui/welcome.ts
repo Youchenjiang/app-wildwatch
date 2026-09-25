@@ -6,14 +6,43 @@
  * The selected era is passed to onStart so the run can be seeded with it.
  */
 import type { EraConfig } from "../sim/era";
+import type { ReproductionMode } from "../sim/world";
+
+/** What each reproduction mode means, in the player's words. */
+export const REPRODUCTION_MODES: ReadonlyArray<{
+    mode: ReproductionMode;
+    label: string;
+    desc: string;
+}> = [
+    {
+        mode: "mixed",
+        label: "混合",
+        desc: "遇到伴侶就交配，沒遇到就自我複製（預設）",
+    },
+    {
+        mode: "sexual",
+        label: "有性",
+        desc: "必須遇到伴侶才能繁殖，否則原地等待",
+    },
+    {
+        mode: "asexual",
+        label: "無性",
+        desc: "一律自我複製，完全不需要伴侶",
+    },
+];
 
 export function createWelcome(
     container: HTMLElement,
-    onStart: (era: EraConfig | undefined) => void,
+    onStart: (era: EraConfig | undefined, reproduction: ReproductionMode) => void,
     eras: ReadonlyArray<EraConfig>,
 ): void {
     const el = document.createElement("div");
     el.id = "welcome";
+    const modeCards = REPRODUCTION_MODES.map(
+        (modeItem) => `
+            <button class="mode-card" data-mode="${modeItem.mode}">${modeItem.label}</button>
+        `,
+    ).join("");
     const eraCards = eras
         .map(
             (eraItem) => `
@@ -37,12 +66,35 @@ export function createWelcome(
             <div class="era-picker-label">選擇場景</div>
             <div class="era-cards">${eraCards}</div>
         </div>
+        <div class="era-picker">
+            <div class="era-picker-label">繁殖方式</div>
+            <div class="mode-cards">${modeCards}</div>
+            <div class="mode-desc" id="mode-desc"></div>
+        </div>
         <button id="welcome-start">開始觀察</button>
         <div class="welcome-keys">空白鍵 暫停 · +/− 速度 · R 重新投放</div>
     `;
     container.appendChild(el);
 
     let selectedEra: EraConfig | undefined = eras[0];
+    let selectedMode: ReproductionMode = REPRODUCTION_MODES[0].mode;
+    const modeDescEl = el.querySelector<HTMLElement>("#mode-desc")!;
+    const modeButtons = el.querySelectorAll<HTMLButtonElement>(".mode-card");
+    const showModeDesc = (): void => {
+        modeDescEl.textContent =
+            REPRODUCTION_MODES.find((m) => m.mode === selectedMode)?.desc ?? "";
+    };
+    for (const button of modeButtons) {
+        button.addEventListener("click", () => {
+            selectedMode = button.dataset!.mode as ReproductionMode;
+            for (const b of modeButtons) b.classList.toggle("on", b === button);
+            showModeDesc();
+        });
+    }
+    // Seed the default as selected, the same way the era picker does.
+    if (modeButtons[0]) modeButtons[0].classList.add("on");
+    showModeDesc();
+
     const cards = el.querySelectorAll<HTMLButtonElement>(".era-card");
     // Mark the first card as selected by default.
     if (cards[0]) cards[0].classList.add("era-selected");
@@ -60,15 +112,15 @@ export function createWelcome(
     if (startButton) {
         startButton.addEventListener("click", () => {
             el.hidden = true;
-            onStart(selectedEra);
+            onStart(selectedEra, selectedMode);
         });
     }
 
-    // Also dismiss on any key (Enter/Space starts with current era selection)
+    // Also dismiss on any key (Enter/Space starts with current selection)
     const dismiss = (event: KeyboardEvent) => {
         if (event.key === "Enter" || event.key === " ") {
             el.hidden = true;
-            onStart(selectedEra);
+            onStart(selectedEra, selectedMode);
             window.removeEventListener("keydown", dismiss);
         }
     };

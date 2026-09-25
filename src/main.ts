@@ -65,15 +65,21 @@ let ticksPerFrame = 10;
 let paused = true;
 let replayIndex: number | null = null;
 
-// Welcome screen: pick an era, then start.
+// Welcome screen: pick an era and how the populations propagate, then start.
 let selectedEra: import("./sim/era").EraConfig | undefined;
-createWelcome(container, (era) => {
-    selectedEra = era;
-    // The module-level world was seeded with no era; re-seed from the chosen
-    // one so the picker actually decides the run instead of only the next R.
-    restart();
-    paused = false;
-}, [grasslandEra, iceAgeEra, desertEra]);
+let selectedReproduction: import("./sim/world").ReproductionMode = "mixed";
+createWelcome(
+    container,
+    (era, reproduction) => {
+        selectedEra = era;
+        selectedReproduction = reproduction;
+        // The module-level world was seeded with no era; re-seed from the chosen
+        // one so the picker actually decides the run instead of only the next R.
+        restart();
+        paused = false;
+    },
+    [grasslandEra, iceAgeEra, desertEra],
+);
 
 window.addEventListener("keydown", (event) => {
     if (event.code === "Space") {
@@ -120,7 +126,9 @@ ctx.renderer.domElement.addEventListener("pointerup", (e) => {
 });
 
 function restart(): void {
-    world = new World(selectedEra ? makeSeeding(undefined, selectedEra) : makeSeeding());
+    // Both seeding choices are locked into the run here, never consulted again
+    // (rule 2: nothing about a run changes after it is seeded).
+    world = new World(makeSeeding(undefined, selectedEra, selectedReproduction));
     ctx.atmosphere.setColors(eraAtmosphereColors(world.config.era));
 
     pool.setEra(world.config.era);
