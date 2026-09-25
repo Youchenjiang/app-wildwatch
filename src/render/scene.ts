@@ -25,17 +25,17 @@ export class Atmosphere {
 
     // Peak (abundance 1): the existing warm, lush summer palette.
     private readonly bgPeak = new THREE.Color(0x0c140e);
-    private readonly bgTrough = new THREE.Color(0x1a1e24);
+    private readonly bgTrough = new THREE.Color(0x303840);
     private readonly hemiSkyPeak = new THREE.Color(0xcfe8d4);
-    private readonly hemiSkyTrough = new THREE.Color(0x8f979f);
+    private readonly hemiSkyTrough = new THREE.Color(0xb0b8c0);
     private readonly hemiGroundPeak = new THREE.Color(0x1c2a20);
-    private readonly hemiGroundTrough = new THREE.Color(0x2b2d2e);
+    private readonly hemiGroundTrough = new THREE.Color(0x6a6860);
     private readonly sunPeak = new THREE.Color(0xfff3d6);
-    private readonly sunTrough = new THREE.Color(0xb7bec5);
+    private readonly sunTrough = new THREE.Color(0xd8dce4);
     private readonly groundPeak = new THREE.Color(0x2e4631);
-    private readonly groundTrough = new THREE.Color(0x3e413c);
+    private readonly groundTrough = new THREE.Color(0x8a8878);
     private readonly wallPeak = new THREE.Color(0x4a6a52);
-    private readonly wallTrough = new THREE.Color(0x505358);
+    private readonly wallTrough = new THREE.Color(0x808080);
 
     constructor(scene: THREE.Scene, worldWidth: number, worldHeight: number) {
         this.scene = scene;
@@ -94,11 +94,11 @@ export class Atmosphere {
         (this.scene.fog as THREE.Fog).color.set(this.bgPeak).lerp(this.bgTrough, trough);
         this.hemi.color.set(this.hemiSkyPeak).lerp(this.hemiSkyTrough, trough);
         this.hemi.groundColor.set(this.hemiGroundPeak).lerp(this.hemiGroundTrough, trough);
-        this.hemi.intensity = 0.9 - 0.35 * trough;
+        this.hemi.intensity = 0.9 - 0.08 * trough;
         this.sun.color.set(this.sunPeak).lerp(this.sunTrough, trough);
-        this.sun.intensity = 1.6 - 0.75 * trough;
+        this.sun.intensity = 1.6 - 0.15 * trough;
         this.groundMat.color.set(this.groundPeak).lerp(this.groundTrough, trough);
-        this.gridMat.opacity = 1 - 0.6 * trough;
+        this.gridMat.opacity = 1 - 0.15 * trough;
         this.wallMat.color.set(this.wallPeak).lerp(this.wallTrough, trough);
     }
 }
