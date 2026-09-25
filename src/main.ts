@@ -100,8 +100,8 @@ window.addEventListener("keydown", (event) => {
     }
 });
 
-// Click to select an entity (drag pans, so only treat as a click when the
-// pointer barely moved between down and up).
+// Click to select a subject — an animal or a tuft (drag pans, so only treat it
+// as a click when the pointer barely moved between down and up).
 let downX = 0;
 let downY = 0;
 ctx.renderer.domElement.addEventListener("pointerdown", (e) => {
@@ -113,16 +113,7 @@ ctx.renderer.domElement.addEventListener("pointerup", (e) => {
     const rect = ctx.renderer.domElement.getBoundingClientRect();
     const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-    const id = pool.pick(ndcX, ndcY, ctx.camera);
-    if (id !== null) {
-        pool.select(id);
-        inspector.show(id);
-        observerCam.follow(id);
-    } else {
-        pool.select(null);
-        inspector.hide();
-        observerCam.follow(null);
-    }
+    selectSubject(pool.pick(ndcX, ndcY, ctx.camera));
 });
 
 function restart(): void {
@@ -206,16 +197,31 @@ onResize();
 
 frame();
 
-// Debug handles so the sim and observer tools can be poked from the console.
-function selectEntity(id: number | null): void {
+/**
+ * Select whatever a click landed on. A tuft is selected exactly like an animal
+ * — the pick hands back a sim id, and the inspector works out what it belongs
+ * to — but the camera does not follow it: a plant never moves, so a follow would
+ * only pin the view without ever having anything to track.
+ */
+function selectSubject(id: number | null): void {
     pool.select(id);
-    if (id !== null) {
-        inspector.show(id);
-        observerCam.follow(id);
-    } else {
+    if (id === null) {
         inspector.hide();
         observerCam.follow(null);
+        return;
     }
+    inspector.show(id);
+    observerCam.follow(isPlant(id) ? null : id);
+}
+
+/** Whether an id belongs to a plant rather than an animal. */
+function isPlant(id: number): boolean {
+    return world.plants.some((p) => p.id === id);
+}
+
+// Debug handles so the sim and observer tools can be poked from the console.
+function selectEntity(id: number | null): void {
+    selectSubject(id);
 }
 (window as unknown as { world?: World }).world = world;
 (window as unknown as { __obs?: unknown }).__obs = {
@@ -232,4 +238,7 @@ function selectEntity(id: number | null): void {
     // can check a real gesture's effect and aim one at a specific animal.
     view: () => observerCam.viewState(),
     screenPoint: (x: number, y: number) => observerCam.screenPoint(x, y),
+    // Which subject the last click selected: the inspector keeps it, and an
+    // outside driver cannot see it any other way.
+    selected: () => inspector.selectedId(),
 };
