@@ -67,7 +67,7 @@ let replayIndex: number | null = null;
 
 // Welcome screen: pick an era and how the populations propagate, then start.
 let selectedEra: import("./sim/era").EraConfig | undefined;
-let selectedReproduction: import("./sim/world").ReproductionMode = "mixed";
+let selectedReproduction: import("./sim/world").ReproductionMode = "asexual";
 createWelcome(
     container,
     (era, reproduction) => {

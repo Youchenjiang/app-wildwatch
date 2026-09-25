@@ -15,19 +15,14 @@ export const REPRODUCTION_MODES: ReadonlyArray<{
     desc: string;
 }> = [
     {
-        mode: "mixed",
-        label: "混合",
-        desc: "遇到伴侶就交配，沒遇到就自我複製（預設）",
+        mode: "asexual",
+        label: "無性",
+        desc: "一律自我複製，不需要伴侶（預設）",
     },
     {
         mode: "sexual",
         label: "有性",
-        desc: "必須遇到伴侶才能繁殖，否則原地等待",
-    },
-    {
-        mode: "asexual",
-        label: "無性",
-        desc: "一律自我複製，完全不需要伴侶",
+        desc: "必須遇到伴侶才能繁殖：找不到就完全不會繁殖",
     },
 ];
 

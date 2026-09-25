@@ -99,10 +99,9 @@ export function gameOverVeil(over: SpeciesKind | null, turn: number, tick: numbe
  * How this run's births were made, so the seeding choice is visible in the run
  * rather than only in the config.
  *
- * It matters because the modes differ quietly: a mixed run with no eligible
- * partner in reach clones every single time, which reports the same numbers as
- * asexual. Showing the split means that is read off the run instead of assumed
- * from the setting.
+ * The modes are meant to be mutually exclusive — a sexual run should show no
+ * clonal births and an asexual run no sexual ones — so showing the split means
+ * that is read off the run instead of assumed from the setting.
  */
 export function birthModeText(sexual: number, asexual: number): string {
     if (sexual + asexual === 0) return "繁殖 —";
