@@ -63,7 +63,7 @@ function runSeeding(label: string, overrides: Partial<WorldConfig>): number {
  */
 const ERAS: readonly EraConfig[] = [grasslandEra, iceAgeEra, desertEra];
 
-function runEra(era: EraConfig): number {
+function runEra(era: EraConfig): { ticks: number; herb: number; carn: number } {
     const world = new World(makeSeeding(20260907, era));
     let endedAt = -1;
     for (let i = 1; i <= MAX_TICKS; i++) {
@@ -74,15 +74,17 @@ function runEra(era: EraConfig): number {
         }
     }
     const status = endedAt < 0 ? `SURVIVED to ${MAX_TICKS}` : `ended ${endedAt} (${world.gameOver} extinct)`;
+    const herb = world.populationOf("herbivore");
+    const carn = world.populationOf("carnivore");
     console.log(
-        `era ${era.name.padEnd(10)} ${status}, final h=${world.populationOf("herbivore")} c=${world.populationOf("carnivore")}, season=${era.plants.seasonLength}/${era.plants.seasonDepth}`,
+        `era ${era.name.padEnd(10)} ${status}, final h=${herb} c=${carn}, season=${era.plants.seasonLength}/${era.plants.seasonDepth}`,
     );
-    return endedAt < 0 ? MAX_TICKS : endedAt;
+    return { ticks: endedAt < 0 ? MAX_TICKS : endedAt, herb, carn };
 }
 
 describe("era sweep", () => {
     it("every era preset sustains both species", () => {
-        const results = ERAS.map((era) => ({ era, ticks: runEra(era) }));
+        const results = ERAS.map((era) => ({ era, ...runEra(era) }));
         console.log(
             "era ranking:",
             results.map((resultItem) => `${resultItem.era.name}:${resultItem.ticks}`).join("  "),
@@ -90,6 +92,12 @@ describe("era sweep", () => {
         for (const res of results) {
             expect(res.ticks, `${res.era.name} seeding went extinct early`).toBeGreaterThanOrEqual(TARGET_TICKS);
         }
+        // Grassland is the locked reference seeding, so its exact outcome is
+        // the determinism canary: a mechanic that changes behavior must move
+        // this number deliberately (and be re-validated), never by accident.
+        const grassland = results.find((r) => r.era.name === "Grassland")!;
+        expect(grassland.herb, "grassland baseline drifted").toBe(31);
+        expect(grassland.carn, "grassland baseline drifted").toBe(41);
     }, 240000);
 });
 
