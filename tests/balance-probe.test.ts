@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { World, type WorldConfig } from "../src/sim/world";
 import { makeSeeding } from "../src/sim/seeding";
+import { desertEra, grasslandEra, iceAgeEra, type EraConfig } from "../src/sim/era";
 
 /**
  * Seeding sweep — the "老天爺" training loop in miniature.
@@ -52,6 +53,45 @@ function runSeeding(label: string, overrides: Partial<WorldConfig>): number {
     );
     return endedAt < 0 ? MAX_TICKS : endedAt;
 }
+
+/**
+ * Era sweep — an era is a seeding preset: it carries species tuning, the
+ * vegetation cycle and its own starting counts. The welcome screen seeds a
+ * run straight from makeSeeding(seed, era), so an era is only valid if that
+ * seeding survives the same 30,000-tick horizon as the baseline. Grassland
+ * must reproduce the documented baseline (h=31 c=41) exactly.
+ */
+const ERAS: readonly EraConfig[] = [grasslandEra, iceAgeEra, desertEra];
+
+function runEra(era: EraConfig): number {
+    const world = new World(makeSeeding(20260907, era));
+    let endedAt = -1;
+    for (let i = 1; i <= MAX_TICKS; i++) {
+        world.tickStep();
+        if (world.gameOver !== null) {
+            endedAt = i;
+            break;
+        }
+    }
+    const status = endedAt < 0 ? `SURVIVED to ${MAX_TICKS}` : `ended ${endedAt} (${world.gameOver} extinct)`;
+    console.log(
+        `era ${era.name.padEnd(10)} ${status}, final h=${world.populationOf("herbivore")} c=${world.populationOf("carnivore")}, season=${era.plants.seasonLength}/${era.plants.seasonDepth}`,
+    );
+    return endedAt < 0 ? MAX_TICKS : endedAt;
+}
+
+describe("era sweep", () => {
+    it("every era preset sustains both species", () => {
+        const results = ERAS.map((era) => ({ era, ticks: runEra(era) }));
+        console.log(
+            "era ranking:",
+            results.map((r) => `${r.era.name}:${r.ticks}`).join("  "),
+        );
+        for (const r of results) {
+            expect(r.ticks, `${r.era.name} seeding went extinct early`).toBeGreaterThanOrEqual(TARGET_TICKS);
+        }
+    }, 240000);
+});
 
 describe("seeding sweep", () => {
     it("finds a seeding that sustains both species", () => {
