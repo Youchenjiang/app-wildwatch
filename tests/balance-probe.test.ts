@@ -71,6 +71,8 @@ function runEra(era: EraConfig): {
     kinMeals: number;
     kinAncestor: number;
     kinDescendant: number;
+    maxLivingDepth: number;
+    kinDensity: number;
 } {
     const world = new World(makeSeeding(20260907, era));
     let endedAt = -1;
@@ -85,7 +87,9 @@ function runEra(era: EraConfig): {
     const herb = world.populationOf("herbivore");
     const carn = world.populationOf("carnivore");
     console.log(
-        `era ${era.name.padEnd(10)} ${status}, final h=${herb} c=${carn}, season=${era.plants.seasonLength}/${era.plants.seasonDepth}, kin=${world.kinMealsEaten}/${world.carrionMealsEaten}`,
+        `era ${era.name.padEnd(10)} ${status}, final h=${herb} c=${carn}, season=${era.plants.seasonLength}/${era.plants.seasonDepth}, ` +
+            `kin=${world.kinMealsEaten}/${world.carrionMealsEaten}, depth=${world.records.reduce((m, r) => Math.max(m, r.livingMaxDepth), 0)} ` +
+            `liveForebears=${(world.records.reduce((m, r) => Math.max(m, r.kinDensity), 0) * 100).toFixed(0)}%`,
     );
     return {
         ticks: endedAt < 0 ? MAX_TICKS : endedAt,
@@ -95,6 +99,10 @@ function runEra(era: EraConfig): {
         kinMeals: world.kinMealsEaten,
         kinAncestor: world.kinAncestorMealsEaten,
         kinDescendant: world.kinDescendantMealsEaten,
+        // The deepest reading of the run, not the final one: a population that
+        // crashed late would otherwise report a small value.
+        maxLivingDepth: world.records.reduce((m, r) => Math.max(m, r.livingMaxDepth), 0),
+        kinDensity: world.records.reduce((m, r) => Math.max(m, r.kinDensity), 0),
     };
 }
 
@@ -121,6 +129,14 @@ describe("era sweep", () => {
         // actually happened here — asking for kinship in one direction only,
         // which silently reported zero for the whole lineage forever. So pin
         // it against the live run instead of a fixture.
+        // Living ancestry is likewise only real in a long run. It needs
+        // animals to breed and die over hundreds of turns, which no fixture
+        // reproduces, and a reading pinned at zero would mean the walk is
+        // broken rather than that the population is unrelated.
+        expect(grassland.maxLivingDepth, "the living population never aged").toBeGreaterThan(0);
+        expect(grassland.kinDensity, "no living animal ever had a living forebear").toBeGreaterThan(0);
+        expect(grassland.kinDensity).toBeLessThanOrEqual(1);
+
         expect(grassland.carrionMeals, "no corpse was ever eaten").toBeGreaterThan(0);
         expect(grassland.kinMeals, "kin feeding silently stopped firing").toBeGreaterThan(0);
         expect(

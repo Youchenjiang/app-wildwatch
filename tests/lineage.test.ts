@@ -72,6 +72,48 @@ describe("lineage", () => {
         expect(lin.depthOf(1, 40)).toBeNull();
     });
 
+    it("measures how far up the nearest living ancestor sits", () => {
+        const lin = createLineage();
+        lin.add(1, null);
+        lin.add(2, [1, 1]);
+        lin.add(3, [2, 2]);
+        lin.add(4, [3, 3]);
+
+        // Everyone alive: the parent is always the closest.
+        expect(lin.nearestLivingAncestor(4, new Set([1, 2, 3, 4]))).toBe(1);
+        // Only the grandparent survives.
+        expect(lin.nearestLivingAncestor(4, new Set([1, 2, 4]))).toBe(2);
+        expect(lin.nearestLivingAncestor(4, new Set([1, 4]))).toBe(3);
+        // Nothing above it is left.
+        expect(lin.nearestLivingAncestor(4, new Set([4]))).toBeNull();
+    });
+
+    it("counts only forebears, never descendants", () => {
+        const lin = createLineage();
+        lin.add(1, null);
+        lin.add(2, [1, 1]);
+        // The child is alive but the parent is not: that is not a living
+        // ancestor, so the reading stays null instead of counting downward.
+        expect(lin.nearestLivingAncestor(1, new Set([1, 2]))).toBeNull();
+        expect(lin.nearestLivingAncestor(1, new Set([1]))).toBeNull();
+    });
+
+    it("does not treat an animal as its own ancestor", () => {
+        const lin = createLineage();
+        lin.add(1, null);
+        lin.add(2, [1, 1]);
+        expect(lin.nearestLivingAncestor(2, new Set([2]))).toBeNull();
+    });
+
+    it("stops at the depth cap for a living ancestor", () => {
+        const lin = createLineage();
+        lin.add(1, null);
+        for (let i = 2; i <= 40; i++) lin.add(i, [i - 1, i - 1]);
+        // Founder 1 is 39 generations up: past the cap, so nothing is found.
+        expect(lin.nearestLivingAncestor(40, new Set([1, 40]))).toBeNull();
+        expect(lin.nearestLivingAncestor(33, new Set([1, 33]))).toBe(MAX_ANCESTRY_DEPTH);
+    });
+
     it("survives a cyclic chain without hanging", () => {
         const lin = createLineage();
         lin.add(1, [2, 2]);
