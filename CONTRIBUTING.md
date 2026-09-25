@@ -58,6 +58,21 @@ main ──▶ merge PR #1 ──▶ merge PR #2 ──▶ merge PR #N
 > [!IMPORTANT]
 > Rebase 後必須使用 `--force-with-lease` 而非 `--force`，以防意外覆蓋他人推送。
 
+### GitHub 儲存庫設定要求 (Repository Settings)
+
+rolling rebase 依賴「每個 PR 的 commit 原樣進入 `main`」，因此儲存庫設定必須滿足以下要求，否則串接鏈會在第一個 PR 合併後全面衝突：
+
+1. **嚴禁 Squash merge**：squash 會把整個 PR 壓成一個 commit，`main` 上不會出現分支中的任何 commit，下一支 rebase 時 Git 無法辨識哪些變更已合入，導致重複套用與衝突。設定方式：Repo → Settings → General → Pull Requests → 取消勾選 **Allow squash merging**，僅保留 **Merge commit** 與 **Rebase and fast-forward**。
+2. **分支保護（main）**：必須經由 PR 合入、禁止直接 push 與 force-push，以確保所有變更都走上述流程。建議以 Ruleset 實作（Settings → Rules → Rulesets）：
+   - `pull_request` 規則：require a pull request before merging；`allowed_merge_methods` 僅勾選 `merge` 與 `rebase`。
+   - `non_fast_forward` 規則：禁止對 `main` force-push。
+   - `deletion` 規則：禁止刪除 `main`。
+3. **Required status checks**：隨著 PR 鏈推進逐步加入。PR #2 合併後，將 test workflow 的 job name（`Typecheck, build, and unit tests`）加入 required checks。注意：required check 必須使用 workflow 的 **job name**（顯示在 checks 頁籤的名稱），而非 job id；且引用的 workflow 必須已存在於 `main`，否則所有 PR 會永久 BLOCKED。
+4. **合併後自動刪除分支**：建議開啟 Settings → General → Pull Requests → **Automatically delete head branches**，保持遠端分支清單乾淨。
+
+> [!WARNING]
+> 若 PR 顯示 `BLOCKED` 但所有 checks 皆綠，優先檢查 ruleset 中是否殘留此階段無法滿足的規則（如 `code_scanning` 要求 CodeQL、`required_review_thread_resolution` 要求所有對話已解決、或 required check 引用了尚不存在於 `main` 的 workflow job）。
+
 ---
 
 ## 提交訊息格式 (Commit Format)
