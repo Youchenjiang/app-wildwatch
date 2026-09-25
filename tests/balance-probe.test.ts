@@ -59,7 +59,7 @@ function runSeeding(label: string, overrides: Partial<WorldConfig>): number {
  * vegetation cycle and its own starting counts. The welcome screen seeds a
  * run straight from makeSeeding(seed, era), so an era is only valid if that
  * seeding survives the same 30,000-tick horizon as the baseline. Grassland
- * must reproduce the documented baseline (h=31 c=41) exactly.
+ * must reproduce the documented baseline (h=28 c=49) exactly.
  */
 const ERAS: readonly EraConfig[] = [grasslandEra, iceAgeEra, desertEra];
 
@@ -119,13 +119,16 @@ describe("era sweep", () => {
         // Grassland is the locked reference seeding, so its exact outcome is
         // the determinism canary: a mechanic that changes behavior must move
         // this number deliberately (and be re-validated), never by accident.
+        // Moved deliberately when sensing and eating reach became true
+        // distances (it was h=31 c=41 while eatRadius only chose which grid
+        // cells to scan, which gave both species a reach of about a cell).
         const grassland = results.find((resultItem) => resultItem.era.name === "Grassland");
         expect(grassland).toBeDefined();
         if (!grassland) {
             throw new Error("Grassland era missing");
         }
-        expect(grassland.herb, "grassland baseline drifted").toBe(31);
-        expect(grassland.carn, "grassland baseline drifted").toBe(41);
+        expect(grassland.herb, "grassland baseline drifted").toBe(28);
+        expect(grassland.carn, "grassland baseline drifted").toBe(49);
 
         // Kin feeding is only observable in a real run: it needs a parent and
         // its offspring to both die inside the same reach of a scavenger. A
@@ -197,8 +200,8 @@ describe("reproduction mode sweep", () => {
         // Asexual must reproduce the locked grassland baseline exactly: choosing
         // it explicitly is not allowed to be a different run from the default.
         expect(asexual.ticks, "asexual mode did not sustain the baseline").toBe(TARGET_TICKS);
-        expect(asexual.herb, "asexual baseline drifted").toBe(31);
-        expect(asexual.carn, "asexual baseline drifted").toBe(41);
+        expect(asexual.herb, "asexual baseline drifted").toBe(28);
+        expect(asexual.carn, "asexual baseline drifted").toBe(49);
         expect(asexual.sexual, "asexual mode mated anyway").toBe(0);
 
         // Sexual must actually fire, and never quietly fall back to cloning.

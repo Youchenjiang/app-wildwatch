@@ -70,9 +70,9 @@ describe("reproduction mode", () => {
     });
 
     // A lone animal can never meet a partner, which is the only way to express
-    // "no mate available" that cannot be undone by wandering: mateRange is not
-    // a distance check, it picks which grid cells to scan, so two animals in
-    // one cell find each other even at range 0.
+    // "no mate available" that wandering cannot undo: mateRange is a true
+    // distance, so two animals a cell apart no longer count as near, but any
+    // pair that drifts together over 600 ticks would eventually mate.
     it("never reproduces in sexual mode when no partner exists, and never clones", () => {
         const world = new World(makeConfig("sexual", { herbivoreCount: 1 }));
         for (let i = 0; i < 600; i++) world.tickStep();

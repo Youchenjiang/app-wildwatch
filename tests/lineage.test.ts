@@ -152,9 +152,10 @@ function makeConfig(overrides: Partial<WorldConfig> = {}): WorldConfig {
 
 /**
  * Grassland, but with a carnivore whose reach is wide enough that a placed
- * corpse is always inside it. The animal still moves between the corpse's
- * position and its bite, and at speed 1.7 that easily exceeds the real
- * eatRadius — this keeps the test about kinship rather than about proximity.
+ * corpse is always inside it. eatRadius is a true distance, and a predator can
+ * move further in one tick than it reaches, so without a generous radius the
+ * bite would land or miss depending on where the animal happened to walk that
+ * tick — this keeps the test about kinship rather than about proximity.
  */
 function reachingEra(): EraConfig {
     return {
