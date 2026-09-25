@@ -1,6 +1,7 @@
 import type { Brain } from "./brain";
 import type { SpeciesParams, Vec2 } from "./types";
 import type { Memory } from "./memory";
+import type { MealLog } from "./meals";
 
 /** An individual NPC. Brain weights are the evolvable genome. */
 export class Entity {
@@ -21,6 +22,9 @@ export class Entity {
     /** Episodic memory: rewarding events bias later behavior within a lifetime. */
     memory: Memory;
 
+    /** What this animal has eaten. Observer data only — behavior never reads it. */
+    meals: MealLog;
+
     /** The evolvable genome; mutable so experiments may inject genomes. */
     brain: Brain;
 
@@ -32,11 +36,13 @@ export class Entity {
         id: number,
         energy: number,
         memory: Memory,
+        meals: MealLog,
     ) {
         this.brain = brain;
         this.angle = angle;
         this.id = id;
         this.energy = energy;
         this.memory = memory;
+        this.meals = meals;
     }
 }

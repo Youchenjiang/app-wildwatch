@@ -5,6 +5,7 @@ import { SpatialGrid } from "./spatial-grid";
 import { SPECIES } from "./species";
 import type { SpeciesKind, SpeciesParams, Vec2 } from "./types";
 import { createMemory, type Memory } from "./memory";
+import { createMealLog } from "./meals";
 import { LifeGrid } from "./learning";
 import { overlaySpecies, overlayPlants } from "./era";
 
@@ -84,6 +85,8 @@ export interface WorldConfig {
     lifeGridCap?: number;
     /** Energy a corpse loses per tick as it decays (default 0.05). */
     carrionDecayPerTick?: number;
+    /** Meals kept per entity for the observer's inspector (default 24). */
+    mealLogCapacity?: number;
     /** Scenario era: redisot the biome palette and species tuning per era. */
     era?: import("./era").EraConfig;
 }
@@ -252,6 +255,7 @@ export class World {
             this.nextId++,
             childEnergy ?? species.reproduceEnergy * 0.5,
             memory ?? createMemory(this.config.memoryCapacity ?? 64),
+            createMealLog(this.config.mealLogCapacity),
         );
         entity.generation = generation;
         if (secondParent && parent) {
@@ -598,6 +602,7 @@ export class World {
                 e.fitness += found.item.energy;
                 e.foodEaten++;
                 e.memory.record(inputs, steer, found.item.energy, e.age);
+                e.meals.add({ source: "plant", energy: found.item.energy, age: e.age });
             }
             return;
         }
@@ -624,6 +629,13 @@ export class World {
                 e.fitness += gained;
                 e.foodEaten++;
                 e.memory.record(inputs, steer, gained, e.age);
+                e.meals.add({
+                    source: "prey",
+                    energy: gained,
+                    age: e.age,
+                    victimId: found.item.id,
+                    victimGeneration: found.item.generation,
+                });
             }
         }
         // Scavenging: carrion is free energy with no hunt risk (rule 6).
@@ -637,6 +649,7 @@ export class World {
             e.fitness += gained;
             e.foodEaten++;
             e.memory.record(inputs, steer, gained, e.age);
+            e.meals.add({ source: "carrion", energy: gained, age: e.age, victimId: c.id });
             break;
         }
     }
