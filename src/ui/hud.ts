@@ -16,6 +16,9 @@ const HERB_COLOR = "#d7f05a";
 const CARN_COLOR = "#ff7b6b";
 const PLANT_COLOR = "#57c26e";
 const SEASON_COLOR = "#e6b45a";
+const DEPTH_COLOR = "#8fd6ff";
+const DEEPEST_COLOR = "#5c9fd6";
+const KIN_COLOR = "#e08fb0";
 
 /**
  * Population stat for kin feeding: of all the corpses carnivores have eaten,
@@ -73,6 +76,19 @@ export function gameOverVeil(over: SpeciesKind | null, turn: number, tick: numbe
         title: `${name}族群滅絕`,
         sub: `本次訓練於回合 ${turn} 結束 · 共 ${tick} ticks<br>按 <kbd>R</kbd> 重新投放`,
     };
+}
+
+/**
+ * The scale the two ancestry-depth lines share: the deepest reading in the
+ * window. Sharing it is the point — each line scaled to its own maximum would
+ * render the mean and the deepest on top of each other, and the gap between
+ * them (how much of the population sits near the deep end versus the tail) is
+ * the thing worth seeing. Never zero, so the division is always safe.
+ */
+export function depthScale(records: TurnRecord[]): number {
+    let max = 0;
+    for (const r of records.slice(-CHART_SPAN)) max = Math.max(max, r.livingMaxDepth);
+    return Math.max(1, max);
 }
 
 /**
@@ -138,6 +154,13 @@ function formatSeasonSuffix(abundance: number | null): string {
     return ` · 季節 ${Math.round(abundance * 100)}%`;
 }
 
+interface LineageLegendElements {
+    depth: Element;
+    deepest: Element;
+    kin: Element;
+    near: Element;
+}
+
 function updateMetrics(
     record: TurnRecord | undefined,
     barHerbEl: HTMLElement,
@@ -145,6 +168,7 @@ function updateMetrics(
     metaHerbEl: Element,
     metaCarnEl: Element,
     kinEl: Element,
+    lineageLeg: LineageLegendElements,
 ): void {
     if (!record) return;
     barHerbEl.style.width = `${Math.min(100, record.avgEnergy.herbivore).toFixed(0)}%`;
@@ -159,6 +183,10 @@ function updateMetrics(
         record.kinAncestorMeals,
         record.kinDescendantMeals,
     );
+    lineageLeg.depth.textContent = String(Math.round(record.livingMeanDepth));
+    lineageLeg.deepest.textContent = String(Math.round(record.livingMaxDepth));
+    lineageLeg.kin.textContent = `${Math.round(record.kinDensity * 100)}%`;
+    lineageLeg.near.textContent = record.meanNearestKin.toFixed(1);
 }
 
 function updateStateBanner(
@@ -187,27 +215,38 @@ function updateStateBanner(
     }
 }
 
+interface SparklineElements {
+    herb: Element;
+    carn: Element;
+    plant: Element;
+    season: Element;
+    depth: Element;
+    deepest: Element;
+    kin: Element;
+}
+
 function updateSparklines(
     records: TurnRecord[],
     seasonLen: number,
     seasonDepth: number,
-    lineHerbEl: Element,
-    lineCarnEl: Element,
-    linePlantEl: Element,
-    lineSeasonEl: Element,
+    lines: SparklineElements,
 ): void {
     if (records.length <= 1) return;
-    lineHerbEl.setAttribute("points", seriesPoints(records, (rec) => rec.populations.herbivore));
-    lineCarnEl.setAttribute("points", seriesPoints(records, (rec) => rec.populations.carnivore));
-    linePlantEl.setAttribute("points", seriesPoints(records, (rec) => rec.plantCount));
+    lines.herb.setAttribute("points", seriesPoints(records, (rec) => rec.populations.herbivore));
+    lines.carn.setAttribute("points", seriesPoints(records, (rec) => rec.populations.carnivore));
+    lines.plant.setAttribute("points", seriesPoints(records, (rec) => rec.plantCount));
     if (seasonLen > 0) {
-        lineSeasonEl.setAttribute(
+        lines.season.setAttribute(
             "points",
             seriesPoints(records, (rec) => seasonAbundanceAt(rec.tick, seasonLen, seasonDepth), 1),
         );
     } else {
-        lineSeasonEl.setAttribute("points", "");
+        lines.season.setAttribute("points", "");
     }
+    const depth = depthScale(records);
+    lines.depth.setAttribute("points", seriesPoints(records, (rec) => rec.livingMeanDepth, depth));
+    lines.deepest.setAttribute("points", seriesPoints(records, (rec) => rec.livingMaxDepth, depth));
+    lines.kin.setAttribute("points", seriesPoints(records, (rec) => rec.kinDensity, 1));
 }
 
 export function createHud(container: HTMLElement): Hud {
@@ -242,17 +281,34 @@ export function createHud(container: HTMLElement): Hud {
         <div class="hud-stat" id="hud-kin">—</div>
 
         <div class="hud-chart">
-            <div class="hud-chart-legend">
+            <div class="hud-chart-tabs">
+                <button type="button" id="tab-pop" class="on">族群</button>
+                <button type="button" id="tab-lineage">血緣</button>
+            </div>
+            <div class="hud-chart-legend" id="legend-pop">
                 <span class="key"><i style="background:${HERB_COLOR}"></i>草食</span>
                 <span class="key"><i style="background:${CARN_COLOR}"></i>肉食</span>
                 <span class="key"><i style="background:${PLANT_COLOR}"></i>草</span>
                 <span class="key"><i style="background:${SEASON_COLOR}"></i>季節</span>
             </div>
+            <div class="hud-chart-legend" id="legend-lineage">
+                <span class="key"><i style="background:${DEPTH_COLOR}"></i>平均 <b id="leg-depth">0</b></span>
+                <span class="key"><i style="background:${DEEPEST_COLOR}"></i>最深 <b id="leg-deepest">0</b></span>
+                <span class="key"><i style="background:${KIN_COLOR}"></i>有活親 <b id="leg-kin">0%</b></span>
+                <span class="key">最近 <b id="leg-near">0</b> 代</span>
+            </div>
             <svg viewBox="0 0 ${CHART_WIDTH} ${CHART_HEIGHT}" preserveAspectRatio="none">
-                <polyline id="line-season" fill="none" stroke="${SEASON_COLOR}" stroke-width="1" stroke-dasharray="4 3" opacity="0.5" points=""/>
-                <polyline id="line-plant" fill="none" stroke="${PLANT_COLOR}" stroke-width="1" opacity="0.55" points=""/>
-                <polyline id="line-herb" fill="none" stroke="${HERB_COLOR}" stroke-width="1.5" points=""/>
-                <polyline id="line-carn" fill="none" stroke="${CARN_COLOR}" stroke-width="1.5" points=""/>
+                <g id="group-pop">
+                    <polyline id="line-season" fill="none" stroke="${SEASON_COLOR}" stroke-width="1" stroke-dasharray="4 3" opacity="0.5" points=""/>
+                    <polyline id="line-plant" fill="none" stroke="${PLANT_COLOR}" stroke-width="1" opacity="0.55" points=""/>
+                    <polyline id="line-herb" fill="none" stroke="${HERB_COLOR}" stroke-width="1.5" points=""/>
+                    <polyline id="line-carn" fill="none" stroke="${CARN_COLOR}" stroke-width="1.5" points=""/>
+                </g>
+                <g id="group-lineage">
+                    <polyline id="line-kin" fill="none" stroke="${KIN_COLOR}" stroke-width="1" stroke-dasharray="4 3" opacity="0.8" points=""/>
+                    <polyline id="line-deepest" fill="none" stroke="${DEEPEST_COLOR}" stroke-width="1" opacity="0.7" points=""/>
+                    <polyline id="line-depth" fill="none" stroke="${DEPTH_COLOR}" stroke-width="1.5" points=""/>
+                </g>
             </svg>
         </div>
         <div class="hud-help">空白鍵 暫停 · +/− 速度 · R 重新投放</div>
@@ -290,12 +346,51 @@ export function createHud(container: HTMLElement): Hud {
     const metaHerbEl = queryHud("#meta-herb");
     const metaCarnEl = queryHud("#meta-carn");
     const kinEl = queryHud("#hud-kin");
+    const tabPopEl = queryHud<HTMLElement>("#tab-pop");
+    const tabLineageEl = queryHud<HTMLElement>("#tab-lineage");
+    const legendPopEl = queryHud<HTMLElement>("#legend-pop");
+    const legendLineageEl = queryHud<HTMLElement>("#legend-lineage");
+    const groupPopEl = queryHud<SVGGElement>("#group-pop");
+    const groupLineageEl = queryHud<SVGGElement>("#group-lineage");
+    const legDepthEl = queryHud("#leg-depth");
+    const legDeepestEl = queryHud("#leg-deepest");
+    const legKinEl = queryHud("#leg-kin");
+    const legNearEl = queryHud("#leg-near");
+    const lineDepthEl = queryHud("#line-depth");
+    const lineDeepestEl = queryHud("#line-deepest");
+    const lineKinEl = queryHud("#line-kin");
     const lineHerbEl = queryHud("#line-herb");
     const lineCarnEl = queryHud("#line-carn");
     const linePlantEl = queryHud("#line-plant");
     const lineSeasonEl = queryHud("#line-season");
     const overTitleEl = queryOver("#over-title");
     const overSubEl = queryOver("#over-sub");
+
+    // Two views rather than more lines on one chart: ancestry depth is a
+    // different scale from population, and six series in a 180-pixel box would
+    // be unreadable. SVG groups need style.display, since `hidden` is an HTML
+    // attribute and does nothing to a <g>.
+    let lineageView = false;
+    const applyView = (): void => {
+        // style.display rather than the `hidden` attribute: `hidden` is only a
+        // UA-stylesheet `display: none` and loses to `#hud .hud-chart-legend`,
+        // so both legends stayed on screen in either view.
+        legendPopEl.style.display = lineageView ? "none" : "";
+        legendLineageEl.style.display = lineageView ? "" : "none";
+        groupPopEl.style.display = lineageView ? "none" : "";
+        groupLineageEl.style.display = lineageView ? "" : "none";
+        tabPopEl.classList.toggle("on", !lineageView);
+        tabLineageEl.classList.toggle("on", lineageView);
+    };
+    tabPopEl.addEventListener("click", () => {
+        lineageView = false;
+        applyView();
+    });
+    tabLineageEl.addEventListener("click", () => {
+        lineageView = true;
+        applyView();
+    });
+    applyView();
 
     return {
         update(world: World, paused: boolean, replay?: ReplayFrame): void {
@@ -309,12 +404,25 @@ export function createHud(container: HTMLElement): Hud {
             popHerbEl.textContent = String(counts.herb);
             popCarnEl.textContent = String(counts.carn);
 
-            updateMetrics(records.at(-1), barHerbEl, barCarnEl, metaHerbEl, metaCarnEl, kinEl);
+            updateMetrics(records.at(-1), barHerbEl, barCarnEl, metaHerbEl, metaCarnEl, kinEl, {
+                depth: legDepthEl,
+                deepest: legDeepestEl,
+                kin: legKinEl,
+                near: legNearEl,
+            });
             updateStateBanner(world, paused, stateEl, overEl, overTitleEl, overSubEl);
 
             const seasonLen = world.config.plantSeasonLength ?? 0;
             const seasonDepth = world.config.plantSeasonDepth ?? 0.5;
-            updateSparklines(records, seasonLen, seasonDepth, lineHerbEl, lineCarnEl, linePlantEl, lineSeasonEl);
+            updateSparklines(records, seasonLen, seasonDepth, {
+                herb: lineHerbEl,
+                carn: lineCarnEl,
+                plant: linePlantEl,
+                season: lineSeasonEl,
+                depth: lineDepthEl,
+                deepest: lineDeepestEl,
+                kin: lineKinEl,
+            });
         },
     };
 }
