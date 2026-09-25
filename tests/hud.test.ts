@@ -1,5 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { kinStatText } from "../src/ui/hud";
+import { gameOverVeil, kinStatText } from "../src/ui/hud";
+
+describe("game-over veil", () => {
+    it("stays hidden while the run is alive", () => {
+        // The regression this guards: the veil used to be shown when a run
+        // ended and never taken down, so pressing R to start over left the old
+        // run's numbers covering the middle of the screen for good.
+        const veil = gameOverVeil(null, 929, 92981);
+        expect(veil.hidden).toBe(true);
+        expect(veil.title).toBe("");
+        expect(veil.sub).toBe("");
+    });
+
+    it("names the species that died out and the run it ended", () => {
+        const herb = gameOverVeil("herbivore", 929, 92981);
+        expect(herb.hidden).toBe(false);
+        expect(herb.title).toBe("草食族群滅絕");
+        expect(herb.sub).toContain("回合 929");
+        expect(herb.sub).toContain("92981 ticks");
+
+        expect(gameOverVeil("carnivore", 12, 340).title).toBe("肉食族群滅絕");
+    });
+});
 
 describe("kin feeding stat", () => {
     it("shows a dash before any corpse has been eaten", () => {
