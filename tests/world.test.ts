@@ -82,6 +82,9 @@ describe("World", () => {
             plantRegrowPerTick: 5,
             turnLength: 10,
             populationCap: 50,
+            // Mating only happens in sexual mode: the default is asexual, and
+            // it never seeks a partner.
+            reproduction: "sexual",
         });
         const world = new World(config);
         // Bring both herbivores together at full energy so they can mate.

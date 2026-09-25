@@ -73,7 +73,7 @@ describe("reproduction mode", () => {
     // "no mate available" that cannot be undone by wandering: mateRange is not
     // a distance check, it picks which grid cells to scan, so two animals in
     // one cell find each other even at range 0.
-    it("waits rather than cloning in sexual mode when no partner exists", () => {
+    it("never reproduces in sexual mode when no partner exists, and never clones", () => {
         const world = new World(makeConfig("sexual", { herbivoreCount: 1 }));
         for (let i = 0; i < 600; i++) world.tickStep();
 
@@ -81,28 +81,26 @@ describe("reproduction mode", () => {
         expect(world.sexualBirths).toBe(0);
         expect(world.asexualBirths).toBe(0);
         expect(world.populationOf("herbivore")).toBe(1);
-        // Waiting means holding the energy rather than spending it on a clone.
+        // Waiting means holding the energy rather than spending it on a child.
         expect(alone.energy).toBeGreaterThanOrEqual(alone.species.reproduceEnergy);
         expect(alone.reproduceCooldown).toBe(0);
     });
 
-    // A mixed population is free to mate once cloning has produced a second
-    // animal, so the claim here is only that the lone founder's own line
-    // continues without a partner — which is what the fallback is for.
-    it("falls back to cloning in mixed mode when no partner exists", () => {
-        const world = new World(makeConfig("mixed", { herbivoreCount: 1 }));
+    it("clones in asexual mode when no partner exists", () => {
+        const world = new World(makeConfig("asexual", { herbivoreCount: 1 }));
         for (let i = 0; i < 600; i++) world.tickStep();
 
         expect(world.asexualBirths).toBeGreaterThan(0);
+        expect(world.sexualBirths).toBe(0);
         expect(world.populationOf("herbivore")).toBeGreaterThan(1);
     });
 
-    it("treats an unset mode as mixed, so existing runs are unchanged", () => {
+    it("treats an unset mode as asexual, which is what runs have always done", () => {
         const world = new World(makeConfig(undefined, { herbivoreCount: 1 }));
         for (let i = 0; i < 600; i++) world.tickStep();
 
         expect(world.asexualBirths).toBeGreaterThan(0);
-        expect(world.populationOf("herbivore")).toBeGreaterThan(1);
+        expect(world.sexualBirths).toBe(0);
     });
 
     it("reports the birth split in the turn records", () => {

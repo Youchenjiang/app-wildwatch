@@ -153,14 +153,15 @@ describe("era sweep", () => {
 /**
  * Reproduction mode — a seeding choice the player makes, so it is validated the
  * same way an era preset is: `asexual` must be exactly the locked baseline
- * (cloning is what the default has always done in practice), and `sexual` must
- * actually make sexual births, since a forced-sexual run is the whole point of
- * being able to choose it.
+ * (cloning is what runs have always done in practice), and `sexual` must really
+ * be sexual: it must make sexual births and not one single clonal birth.
  *
- * `sexual` is NOT asserted to survive. At these densities a partner for a
- * carnivore is rare enough that the predator line goes extinct in a few
- * thousand ticks, which is a balance question rather than a validation one —
- * so the outcome is reported and left visible instead of being asserted away.
+ * `sexual` is NOT asserted to survive. A sexual animal that meets no partner
+ * does not breed at all, and at these densities a carnivore rarely meets one,
+ * so the predator line dies out within a few thousand ticks. That is the mode
+ * working as specified rather than a failure — the run is reported so the cost
+ * of the choice is visible, instead of being asserted away or papered over with
+ * a clone fallback.
  */
 describe("reproduction mode sweep", () => {
     const runMode = (mode: ReproductionMode) => {
