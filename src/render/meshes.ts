@@ -8,6 +8,56 @@ import type { EraConfig } from "../sim/era";
 const HERB_COLOR = 0xd7f05a;
 const CARN_COLOR = 0xc84f4f;
 
+/** Gait wave speed in radians per second. */
+export const GAIT_RATE = 11;
+/** Frame-to-frame travel, in world units, at which an animal reads as moving.
+ * Deliberately small: any real travel drives a full stride, so the amplitude
+ * never changes with the tick speed the player picked, while a paused or
+ * standing animal (zero travel) settles back into a still pose. */
+export const GAIT_REFERENCE_TRAVEL = 0.4;
+/** Peak deform as a fraction of the body's size. Kept modest: this is flavour,
+ * not a cartoon — the animal must stay readable at god-camera distance. The
+ * animals are only a handful of pixels across, so it still has to be big
+ * enough to register as life rather than as noise. */
+export const GAIT_SQUASH = 0.22;
+/** Peak hop height as a fraction of the body's resting height, so a larger
+ * (better fed) animal hops proportionally higher. */
+export const GAIT_HOP = 0.45;
+/** How fast the travel signal eases off once an animal stops. */
+const GAIT_DECAY = 0.86;
+
+/**
+ * Squash-stretch pose for one animal.
+ *
+ * `wave` is a sine in [-1, 1]. At +1 the body is at the top of its stride:
+ * airborne, stretched tall and thin. At -1 it is grounded and squashed short
+ * and wide, like the compression of a landing. The x/z axes are compensated
+ * by exactly 1/sqrt against the y deform, so the body really is squashed
+ * rather than resized (volume is preserved to floating-point), and the hop is
+ * biased upward (0.5 + 0.5 * wave) so a footfall never pushes the body below
+ * its resting height.
+ */
+export function gaitPose(baseScale: number, gait: number, wave: number) {
+    const deform = GAIT_SQUASH * gait * wave; // positive = tall, negative = squat
+    const counter = 1 / Math.sqrt(1 + deform) - 1;
+    return {
+        sx: baseScale * (1 + counter),
+        sy: baseScale * (1 + deform),
+        sz: baseScale * (1 + counter),
+        lift: baseScale * GAIT_HOP * gait * (0.5 + 0.5 * wave),
+    };
+}
+
+/**
+ * Advance the smoothed 0..1 "this animal is travelling" signal. It rises to
+ * the travel target immediately and eases back down, so a running animal
+ * strides at once while a stopped (or paused) one settles into a still pose.
+ */
+export function nextGait(prev: number, travel: number): number {
+    const target = Math.min(1, travel / GAIT_REFERENCE_TRAVEL);
+    return target > prev ? target : prev * GAIT_DECAY;
+}
+
 /** What the renderer should draw this frame: the live world or a replay frame. */
 export interface RenderSubjects {
     entities: Entity[];
@@ -59,6 +109,12 @@ export class MeshPool {
     private readonly plantMaterial = new THREE.MeshLambertMaterial({ color: 0x3fae5a });
     private readonly carrionMaterial = new THREE.MeshLambertMaterial({ color: 0x8a7a5c });
     private plantSeasonScale = 1;
+    /** Seconds of wall clock driving the gait wave; refreshed by each sync. */
+    private animTime = 0;
+    /** Last drawn position per animal, used to measure travel between frames. */
+    private readonly lastPos = new Map<number, { x: number; y: number }>();
+    /** Smoothed travel signal per animal that gates the gait animation. */
+    private readonly gait = new Map<number, number>();
     private readonly materials = new Map<number, THREE.MeshLambertMaterial>();
     /** Flat list of animal meshes with ids, rebuilt each sync, for click picking. */
     private pickList: Array<{ id: number; mesh: THREE.Mesh }> = [];
@@ -105,6 +161,8 @@ export class MeshPool {
         this.npcMeshes.clear();
         this.plantMeshes.clear();
         this.carrionMeshes.clear();
+        this.lastPos.clear();
+        this.gait.clear();
         this.pickList = [];
         this.ring.visible = false;
         this.selectedId = null;
@@ -118,11 +176,14 @@ export class MeshPool {
         }
     }
 
-    /** Draw the live world. */
+    /** Draw the live world. `animTime` is wall-clock seconds; omitting it
+     * holds the gait clock still (a frozen pose). */
     sync(
         world: World,
         selectedId: number | null = null,
+        animTime = this.animTime,
     ): void {
+        this.animTime = animTime;
         const seasonal = (world.config.plantSeasonLength ?? 0) > 0;
         this.syncSeason(seasonal ? world.seasonAbundance : null);
         this.syncSubjects({ entities: world.entities, plants: world.plants, carrions: world.carrions }, selectedId);
@@ -140,7 +201,12 @@ export class MeshPool {
     }
 
     /** Draw a recorded replay frame instead of the live world. */
-    syncFrame(frame: ReplayFrame, selectedId: number | null = null): void {
+    syncFrame(
+        frame: ReplayFrame,
+        selectedId: number | null = null,
+        animTime = this.animTime,
+    ): void {
+        this.animTime = animTime;
         this.selectedId = selectedId;
         // Replays carry their own season position: plants tint and size with
         // the historical tick (null means seasons were off — neutral look).
@@ -186,9 +252,7 @@ export class MeshPool {
                 this.npcMeshes.set(e.id, mesh);
             }
             const scale = 0.6 + 0.8 * Math.min(1, e.energy / e.species.maxEnergy);
-            mesh.scale.setScalar(scale);
-            mesh.position.set(e.pos.x, scale * 0.6, e.pos.y);
-            mesh.rotation.y = e.angle;
+            const lift = this.poseAnimal(mesh, e.id, e.pos.x, e.pos.y, e.angle, scale);
             this.pickList.push({ id: e.id, mesh });
 
             let shadow = this.npcShadows.get(e.id);
@@ -199,13 +263,16 @@ export class MeshPool {
                 this.scene.add(shadow);
                 this.npcShadows.set(e.id, shadow);
             }
-            const shadowScale = scale * 0.9;
-            shadow.scale.setScalar(shadowScale);
+            // The shadow tightens and fades as the body hops clear of it.
+            const airborne = lift;
+            shadow.scale.setScalar(scale * 0.9 * (1 - 0.3 * airborne));
             shadow.position.set(e.pos.x, 0.02, e.pos.y);
-            (shadow.material as THREE.MeshBasicMaterial).opacity = 0.22 + 0.14 * Math.min(1, e.energy / e.species.maxEnergy);
+            (shadow.material as THREE.MeshBasicMaterial).opacity =
+                (0.22 + 0.14 * Math.min(1, e.energy / e.species.maxEnergy)) * (1 - 0.3 * airborne);
         }
         this.reap(this.npcMeshes, seenNpc);
         this.reap(this.npcShadows, seenNpc);
+        this.pruneGait(seenNpc);
         this.updateRing();
     }
 
@@ -224,9 +291,7 @@ export class MeshPool {
                 this.npcMeshes.set(n.id, mesh);
             }
             const scale = 0.6 + 0.8 * n.energy01;
-            mesh.scale.setScalar(scale);
-            mesh.position.set(n.x, scale * 0.6, n.y);
-            mesh.rotation.y = n.angle;
+            const lift = this.poseAnimal(mesh, n.id, n.x, n.y, n.angle, scale);
             this.pickList.push({ id: n.id, mesh });
 
             let shadow = this.npcShadows.get(n.id);
@@ -237,16 +302,58 @@ export class MeshPool {
                 this.scene.add(shadow);
                 this.npcShadows.set(n.id, shadow);
             }
-            const shadowScale = scale * 0.9;
-            shadow.scale.setScalar(shadowScale);
+            const airborne = lift;
+            shadow.scale.setScalar(scale * 0.9 * (1 - 0.3 * airborne));
             shadow.position.set(n.x, 0.02, n.y);
-            (shadow.material as THREE.MeshBasicMaterial).opacity = 0.22 + 0.14 * n.energy01;
+            (shadow.material as THREE.MeshBasicMaterial).opacity =
+                (0.22 + 0.14 * n.energy01) * (1 - 0.3 * airborne);
         }
         this.reap(this.npcMeshes, seenNpc);
         this.reap(this.npcShadows, seenNpc);
+        this.pruneGait(seenNpc);
         this.updateRing();
     }
 
+    private pruneGait(seen: Set<number>): void {
+        for (const id of this.lastPos.keys()) {
+            if (!seen.has(id)) {
+                this.lastPos.delete(id);
+                this.gait.delete(id);
+            }
+        }
+    }
+
+    /**
+     * Pose one animal for this frame: measure how far it travelled since the
+     * last sync, then apply a squash-stretch stride with a small hop. Bodies
+     * bob out of phase (seeded by id) so a herd never marches in lockstep, and
+     * a standing or paused animal (no travel) settles into a clean pose.
+     * Returns the normalized airborne height (0..1) so the caller can shrink
+     * the shadow as the body rises.
+     */
+    private poseAnimal(
+        mesh: THREE.Mesh,
+        id: number,
+        x: number,
+        y: number,
+        angle: number,
+        baseScale: number,
+    ): number {
+        const last = this.lastPos.get(id);
+        this.lastPos.set(id, { x, y });
+        const travel = last ? Math.hypot(x - last.x, y - last.y) : 0;
+        const gait = nextGait(this.gait.get(id) ?? 0, travel);
+        this.gait.set(id, gait);
+        const wave = Math.sin(this.animTime * GAIT_RATE + id * 1.7);
+        const pose = gaitPose(baseScale, gait, wave);
+        mesh.scale.set(pose.sx, pose.sy, pose.sz);
+        // The sphere rests on its radius, so the standing height tracks the
+        // current y squash before the hop is added on top.
+        mesh.position.set(x, pose.sy * 0.6 + pose.lift, y);
+        mesh.rotation.y = angle;
+        // Normalized 0..1 lift, so callers don't have to know the body size.
+        return pose.lift / (baseScale * GAIT_HOP);
+    }
     private syncPlants(plants: Plant[]): void {
         const seenPlant = new Set<number>();
         for (const p of plants) {

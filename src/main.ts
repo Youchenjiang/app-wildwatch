@@ -133,6 +133,10 @@ function restart(): void {
     (window as unknown as { world?: World }).world = world;
 }
 
+// Wall-clock origin for the animals' gait animation. Using real elapsed time
+// keeps the stride smooth regardless of tick speed or frame rate.
+const animStart = performance.now();
+
 function stepSimulation(): void {
     if (paused || world.gameOver !== null) return;
     for (let i = 0; i < ticksPerFrame; i++) {
@@ -142,13 +146,13 @@ function stepSimulation(): void {
     }
 }
 
-function renderReplay(targetIndex: number): void {
+function renderReplay(targetIndex: number, animTime: number): void {
     const frames = recorder.size;
     if (frames > 0) {
         const idx = Math.min(Math.max(0, targetIndex), frames - 1);
         const f = recorder.frameAt(idx);
         if (f) {
-            pool.syncFrame(f, inspector.selectedId());
+            pool.syncFrame(f, inspector.selectedId(), animTime);
             ctx.atmosphere.syncSeason(f.seasonAbundance);
             hud.update(world, paused, f);
             controls.setReplayIndex(idx, frames);
@@ -157,24 +161,26 @@ function renderReplay(targetIndex: number): void {
     inspector.update(null);
 }
 
-function renderLive(): void {
+function renderLive(animTime: number): void {
     const selectedId = inspector.selectedId();
-    pool.sync(world, selectedId);
+    pool.sync(world, selectedId, animTime);
     ctx.atmosphere.syncSeason((world.config.plantSeasonLength ?? 0) > 0 ? world.seasonAbundance : null);
     if (selectedId !== null) {
-        const e = world.entities.find((x) => x.id === selectedId && x.alive);
-        observerCam.updateFromSim(e ? e.pos.x : null, e ? e.pos.y : null);
+        const selectedEntity = world.entities.find((entity) => entity.id === selectedId && entity.alive);
+        observerCam.updateFromSim(selectedEntity ? selectedEntity.pos.x : null, selectedEntity ? selectedEntity.pos.y : null);
     }
     inspector.update(world);
     hud.update(world, paused);
 }
 
 function frame(): void {
+    const animTime = (performance.now() - animStart) / 1000;
+    const replayIndexNow = replayIndex;
     stepSimulation();
-    if (replayIndex !== null) {
-        renderReplay(replayIndex);
+    if (replayIndexNow !== null) {
+        renderReplay(replayIndexNow, animTime);
     } else {
-        renderLive();
+        renderLive(animTime);
     }
 
     observerCam.apply();
