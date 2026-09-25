@@ -1,8 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { depthScale, gameOverVeil, kinStatText, updateStateBanner } from "../src/ui/hud";
+import { birthModeText, depthScale, gameOverVeil, kinStatText, updateStateBanner } from "../src/ui/hud";
 import type { TurnRecord } from "../src/sim/world";
 
 const depthRecord = (livingMaxDepth: number): TurnRecord => ({ livingMaxDepth }) as TurnRecord;
+
+describe("birth mode stat", () => {
+    it("shows a dash before the first birth", () => {
+        expect(birthModeText(0, 0)).toBe("繁殖 —");
+    });
+
+    it("reports the split, so a mixed run that only clones is visible", () => {
+        // The case worth reading off the run: mixed mode with no partner in
+        // reach clones every time and is indistinguishable from asexual by
+        // the setting alone.
+        expect(birthModeText(0, 8794)).toBe("繁殖 有性 0 · 無性 8794");
+        expect(birthModeText(175, 0)).toBe("繁殖 有性 175 · 無性 0");
+    });
+});
 
 describe("lineage chart scale", () => {
     it("spans the deepest reading in the window", () => {
