@@ -162,10 +162,13 @@ describe("cannibalism", () => {
     });
 
     it("does not read a below-zero energy dip as starvation while it is off", () => {
-        // Energy dips slightly below zero before an animal dies. An ungated
-        // `energy < threshold * maxEnergy` comparison read that dip as
-        // starvation even at the default threshold of 0, which let a disabled
-        // feature hunt its own kind and moved the balance baselines.
+        // The threshold is an enable switch and is checked as one, rather than
+        // by comparing energy against it alone. Energy can no longer go below
+        // zero (a charge stops at zero), so this pins the gate itself: a value
+        // below zero must never enable the feature, even if one appears again.
+        // That is the shape of the bug that shipped — the old comparison read
+        // the dip as starvation, so a disabled feature hunted its own kind and
+        // moved the balance baselines with it.
         const config = cannibalConfig({ seed: 7, carnivoreCount: 2, cannibalismThreshold: 0 });
         const world = new World(config);
         world.tickStep();
