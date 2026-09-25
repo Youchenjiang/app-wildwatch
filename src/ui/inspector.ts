@@ -1,8 +1,16 @@
 import type { Entity } from "../sim/entity";
 import { cosineSimilarity } from "../sim/memory";
+import type { Meal, MealSource } from "../sim/meals";
 import type { World } from "../sim/world";
 
 const MEMORY_ROWS = 8;
+const MEAL_ROWS = 6;
+
+const MEAL_LABEL: Record<MealSource, string> = {
+    plant: "植物",
+    prey: "獵物",
+    carrion: "屍體",
+};
 
 interface MemoryRow {
     similarity: number;
@@ -15,7 +23,9 @@ interface MemoryRow {
  * Selected-entity inspector card. Reads a live entity each frame; during
  * replay it shows the last live snapshot (frozen) and says so. The memory
  * panel lists the entity's most recent episodic traces with their similarity
- * to the current senses, so you can watch lifelong learning as it happens.
+ * to the current senses, so you can watch lifelong learning as it happens; the
+ * meal panel lists what it has actually eaten, so you can see whether that
+ * learning is producing a grazer, a hunter or a scavenger.
  */
 export interface EntityInspector {
     show(id: number): void;
@@ -34,6 +44,7 @@ export function createInspector(container: HTMLElement): EntityInspector {
     let current: number | null = null;
     let cached: Entity | null = null;
     let cachedRows: MemoryRow[] = [];
+    let cachedMeals: Meal[] = [];
 
     function memoryRows(e: Entity, world: World): MemoryRow[] {
         const inputs = world.inputsFor(e);
@@ -45,9 +56,10 @@ export function createInspector(container: HTMLElement): EntityInspector {
         }));
     }
 
-    function render(e: Entity, frozenNow: boolean, rows: MemoryRow[]): void {
+    function render(e: Entity, frozenNow: boolean, rows: MemoryRow[], meals: Meal[]): void {
         const s = e.species;
         const kindName = s.kind === "herbivore" ? "草食" : "肉食";
+        const counts = e.meals.counts();
         card.innerHTML = `
             <div class="insp-head">
                 <span class="dot ${s.kind === "herbivore" ? "herb" : "carn"}"></span>
@@ -85,6 +97,28 @@ export function createInspector(container: HTMLElement): EntityInspector {
                             .join("")}
                     </div>`
             }
+            <div class="insp-mem-title">
+                進食 · 最近 ${meals.length} 條
+                <span class="insp-meal-sum">植物 ${counts.plant} · 獵物 ${counts.prey} · 屍體 ${counts.carrion}</span>
+            </div>
+            ${
+                meals.length === 0
+                    ? '<div class="insp-mem-empty">尚未進食</div>'
+                    : `<div class="insp-mem insp-meals">
+                        <div class="insp-mem-head"><span>來源</span><span>能量</span><span>世代</span><span>多久前</span></div>
+                        ${meals
+                            .map(
+                                (m) => `
+                        <div class="insp-mem-row">
+                            <i class="meal-src ${m.source}">${MEAL_LABEL[m.source]}</i>
+                            <b>+${m.energy.toFixed(0)}</b>
+                            <span>${m.victimGeneration === undefined ? "—" : `G${m.victimGeneration}`}</span>
+                            <em>${e.age - m.age}t</em>
+                        </div>`,
+                            )
+                            .join("")}
+                    </div>`
+            }
         `;
         card.querySelector("#insp-close")?.addEventListener("click", () => cardOwner().hide());
     }
@@ -100,12 +134,14 @@ export function createInspector(container: HTMLElement): EntityInspector {
             current = id;
             cached = null;
             cachedRows = [];
+            cachedMeals = [];
             card.hidden = false;
         },
         hide(): void {
             current = null;
             cached = null;
             cachedRows = [];
+            cachedMeals = [];
             card.hidden = true;
         },
         update(world: World | null): void {
@@ -117,12 +153,13 @@ export function createInspector(container: HTMLElement): EntityInspector {
             if (!e) {
                 // The subject died (or we are in replay): keep the last live
                 // snapshot visible as a frozen card until the user closes it.
-                if (cached) render(cached, true, cachedRows);
+                if (cached) render(cached, true, cachedRows, cachedMeals);
                 return;
             }
             cached = e;
             cachedRows = memoryRows(e, world);
-            render(e, false, cachedRows);
+            cachedMeals = [...e.meals.recent(MEAL_ROWS)];
+            render(e, false, cachedRows, cachedMeals);
         },
         selectedId(): number | null {
             return current;

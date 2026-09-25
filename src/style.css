@@ -383,8 +383,11 @@ body {
 
 #inspector .insp-mem {
     margin-top: 2px;
-    max-height: 120px;
+    max-height: 96px;
     overflow-y: auto;
+    /* Reserve the scrollbar's width, or it sits on top of the right-most
+       column and clips the values. */
+    scrollbar-gutter: stable;
 }
 
 #inspector .insp-mem-head,
@@ -424,6 +427,34 @@ body {
     font-style: normal;
     color: #8ba595;
     text-align: right;
+}
+
+#inspector .insp-meal-sum {
+    float: right;
+    font-weight: 400;
+    font-size: 9px;
+    color: #6f8a7a;
+}
+
+#inspector .insp-meals {
+    max-height: 72px;
+}
+
+/* Meal source badge: what kind of food this bite was. */
+#inspector .insp-mem-row i.meal-src {
+    font-weight: 700;
+}
+
+#inspector .meal-src.plant {
+    color: #8fdc6f;
+}
+
+#inspector .meal-src.prey {
+    color: #ff7b6b;
+}
+
+#inspector .meal-src.carrion {
+    color: #c9a86a;
 }
 
 /* ------------------------------------------------------- Game-over veil */
