@@ -27,18 +27,18 @@ export function createControls(container: HTMLElement, callbacks: ControlsCallba
     bar.id = "controls";
     bar.innerHTML = `
         <div class="ctl-row">
-            <button id="ctl-pause" title="空白鍵">⏸</button>
+            <button id="ctl-pause" title="空白鍵">⏸ 暫停</button>
             <div class="ctl-speed">
-                <button id="ctl-slower" title="-">−</button>
+                <button id="ctl-slower" title="減速">−</button>
                 <span id="ctl-speed-label">×10</span>
-                <button id="ctl-faster" title="+">＋</button>
+                <button id="ctl-faster" title="加速">＋</button>
             </div>
             <span class="ctl-sep"></span>
-            <button id="ctl-cam" title="Reset view">🎯</button>
-            <button id="ctl-end" title="結束本局訓練">⏹ 結束本局</button>
+            <button id="ctl-cam" title="重置視角">🎯 重置</button>
+            <button id="ctl-end" title="結束本局">⏹ 結束</button>
         </div>
         <div class="ctl-replay" id="ctl-replay" hidden>
-            <button id="ctl-live">返回即時</button>
+            <button id="ctl-live">◀ 返回即時</button>
             <input id="ctl-scrub" type="range" min="0" max="0" value="0" step="1" />
             <span id="ctl-frame-label">0 / 0</span>
         </div>
@@ -71,7 +71,7 @@ export function createControls(container: HTMLElement, callbacks: ControlsCallba
 
     return {
         setPaused(paused: boolean): void {
-            pauseBtn.textContent = paused ? "▶" : "⏸";
+            pauseBtn.textContent = paused ? "▶ 繼續" : "⏸ 暫停";
         },
         setSpeed(tpf: number): void {
             speedLabel.textContent = `×${tpf}`;

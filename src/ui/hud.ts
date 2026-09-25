@@ -7,9 +7,9 @@ export interface Hud {
     update(world: World, paused: boolean, replay?: ReplayFrame): void;
 }
 
-const CHART_WIDTH = 240;
-const CHART_HEIGHT = 54;
-const CHART_SPAN = 120; // how many recent turns the chart shows
+const CHART_WIDTH = 180;
+const CHART_HEIGHT = 40;
+const CHART_SPAN = 80; // how many recent turns the chart shows
 
 const HERB_COLOR = "#d7f05a";
 const CARN_COLOR = "#ff7b6b";
