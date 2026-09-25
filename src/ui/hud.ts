@@ -1,6 +1,7 @@
 import type { ReplayFrame } from "../observe/replay";
 import { seasonAbundanceAt } from "../sim/world";
 import type { World, TurnRecord } from "../sim/world";
+import type { SpeciesKind } from "../sim/types";
 
 export interface Hud {
     /** Pass a replay frame while scrubbing so the HUD follows the historical tick. */
@@ -45,6 +46,33 @@ export function kinStatText(
               ? "（全為親代）"
               : `（親代 ${kinAncestorMeals} · 子代 ${kinDescendantMeals}）`;
     return `近親取食 ${kinMeals} · 佔腐食 ${pct}%${sides}`;
+}
+
+/** What the game-over veil says, and whether it belongs on screen at all. */
+export interface GameOverVeil {
+    hidden: boolean;
+    /** The species that died out, e.g. 草食族群滅絕. Empty while hidden. */
+    title: string;
+    sub: string;
+}
+
+/**
+ * Derive the game-over veil from the run's state.
+ *
+ * Deliberately derived rather than toggled on the way up: `hidden` comes back
+ * true for a live run, so a finished run's veil cannot survive into the next
+ * one. It used to be shown when a run ended and never taken down again, which
+ * meant pressing R to start over left the previous run's numbers covering the
+ * middle of the screen for good.
+ */
+export function gameOverVeil(over: SpeciesKind | null, turn: number, tick: number): GameOverVeil {
+    if (over === null) return { hidden: true, title: "", sub: "" };
+    const name = over === "herbivore" ? "草食" : "肉食";
+    return {
+        hidden: false,
+        title: `${name}族群滅絕`,
+        sub: `本次訓練於回合 ${turn} 結束 · 共 ${tick} ticks<br>按 <kbd>R</kbd> 重新投放`,
+    };
 }
 
 /**
@@ -141,17 +169,15 @@ function updateStateBanner(
     overTitleEl: Element,
     overSubEl: Element,
 ): void {
-    const over = world.gameOver;
-    if (over !== null) {
-        const name = over === "herbivore" ? "草食" : "肉食";
+    const veil = gameOverVeil(world.gameOver, world.turn, world.tick);
+    overEl.hidden = veil.hidden;
+    if (!veil.hidden) {
         stateEl.textContent = "訓練結束";
         stateEl.className = "hud-state dead";
-        overEl.hidden = false;
-        overTitleEl.textContent = `${name}族群滅絕`;
-        overSubEl.innerHTML = `本次訓練於回合 ${world.turn} 結束 · 共 ${world.tick} ticks<br>按 <kbd>R</kbd> 重新投放`;
+        overTitleEl.textContent = veil.title;
+        overSubEl.innerHTML = veil.sub;
         return;
     }
-    overEl.hidden = true;
     if (paused) {
         stateEl.textContent = "已暫停";
         stateEl.className = "hud-state paused";
