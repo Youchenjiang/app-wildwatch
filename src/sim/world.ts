@@ -401,7 +401,7 @@ export class World {
         const turnPenalty = turnEnergyMultiplier(s.turnCost, steerMag, thrust);
         e.energy -= s.moveCost * (0.3 + 0.7 * thrust) * turnPenalty;
 
-        this.tryEat(e, inputs);
+        this.tryEat(e, inputs, steer);
 
         if (e.energy >= s.reproduceEnergy) this.reproduce(e);
 
@@ -561,7 +561,7 @@ export class World {
     // Eating / reproduction / death
     // ---------------------------------------------------------------------
 
-    private tryEat(e: Entity, inputs: number[]): void {
+    private tryEat(e: Entity, inputs: number[], steer: number): void {
         const s = e.species;
         if (s.kind === "herbivore") {
             const found = this.nearest(
@@ -575,7 +575,7 @@ export class World {
                 e.energy += found.item.energy;
                 e.fitness += found.item.energy;
                 e.foodEaten++;
-                e.memory.record(inputs, 0, found.item.energy, e.age);
+                e.memory.record(inputs, steer, found.item.energy, e.age);
             }
             return;
         }
@@ -601,7 +601,7 @@ export class World {
                 e.energy += gained;
                 e.fitness += gained;
                 e.foodEaten++;
-                e.memory.record(inputs, 0, gained, e.age);
+                e.memory.record(inputs, steer, gained, e.age);
             }
         }
         // Scavenging: carrion is free energy with no hunt risk (rule 6).
@@ -614,7 +614,7 @@ export class World {
             e.energy = Math.min(s.maxEnergy, e.energy + gained);
             e.fitness += gained;
             e.foodEaten++;
-            e.memory.record(inputs, 0, gained, e.age);
+            e.memory.record(inputs, steer, gained, e.age);
             break;
         }
     }
