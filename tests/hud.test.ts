@@ -9,10 +9,10 @@ describe("birth mode stat", () => {
         expect(birthModeText(0, 0)).toBe("繁殖 —");
     });
 
-    it("reports the split, so a mixed run that only clones is visible", () => {
-        // The case worth reading off the run: mixed mode with no partner in
-        // reach clones every time and is indistinguishable from asexual by
-        // the setting alone.
+    it("reports the split, so a run's mode is read off the run", () => {
+        // A sexual run must never show a clonal birth, and an asexual one must
+        // never show a sexual birth; the split is what makes that checkable at
+        // a glance instead of a matter of trust.
         expect(birthModeText(0, 8794)).toBe("繁殖 有性 0 · 無性 8794");
         expect(birthModeText(175, 0)).toBe("繁殖 有性 175 · 無性 0");
     });
