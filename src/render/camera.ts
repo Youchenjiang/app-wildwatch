@@ -1,9 +1,9 @@
 import * as THREE from "three";
 
 /**
- * Observer camera for an orthographic god view: wheel zoom toward the
- * pointer, drag to pan, optional follow of a selected entity, reset to the
- * default framing. Purely visual — never touches the simulation.
+ * Observer camera for an orthographic god view: wheel zoom, drag to pan,
+ * optional follow of a selected entity, reset to the default framing. Purely
+ * visual — never touches the simulation.
  */
 export class ObserverCamera {
     private readonly camera: THREE.OrthographicCamera;
@@ -36,7 +36,9 @@ export class ObserverCamera {
     private attach(): void {
         const onWheel = (event: WheelEvent): void => {
             event.preventDefault();
-            const factor = event.deltaY > 0 ? 1.12 : 1 / 1.12;
+            // Scroll up (negative deltaY) pulls the view closer, scroll down
+            // pushes it away — the direction every map and canvas tool uses.
+            const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
             this.setZoom(this.zoomFactor * factor);
         };
         const onDown = (event: PointerEvent): void => {
