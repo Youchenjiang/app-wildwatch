@@ -1,7 +1,10 @@
+import type { ReplayFrame } from "../observe/replay";
+import { seasonAbundanceAt } from "../sim/world";
 import type { World, TurnRecord } from "../sim/world";
 
 export interface Hud {
-    update(world: World, paused: boolean): void;
+    /** Pass a replay frame while scrubbing so the HUD follows the historical tick. */
+    update(world: World, paused: boolean, replay?: ReplayFrame): void;
 }
 
 const CHART_WIDTH = 240;
@@ -11,16 +14,24 @@ const CHART_SPAN = 120; // how many recent turns the chart shows
 const HERB_COLOR = "#d7f05a";
 const CARN_COLOR = "#ff7b6b";
 const PLANT_COLOR = "#57c26e";
+const SEASON_COLOR = "#e6b45a";
 
-/** SVG polyline points for a series of the last N records, scaled to 0..max. */
+/**
+ * SVG polyline points for a series of the last N records, scaled to 0..max.
+ * Pass `fixedMax` to pin the scale instead of scaling to the series' own max
+ * (used by the season curve, whose 0..1 range should fill the chart).
+ */
 function seriesPoints(
     records: TurnRecord[],
     pick: (r: TurnRecord) => number,
+    fixedMax?: number,
 ): string {
     const recent = records.slice(-CHART_SPAN);
     if (recent.length === 0) return "";
-    let max = 1;
-    for (const r of recent) max = Math.max(max, pick(r));
+    let max = fixedMax ?? 1;
+    if (fixedMax === undefined) {
+        for (const r of recent) max = Math.max(max, pick(r));
+    }
     const step = CHART_WIDTH / (CHART_SPAN - 1);
     const base = recent.length < CHART_SPAN ? CHART_SPAN - recent.length : 0;
     return recent
@@ -66,8 +77,10 @@ export function createHud(container: HTMLElement): Hud {
                 <span class="key"><i style="background:${HERB_COLOR}"></i>草食</span>
                 <span class="key"><i style="background:${CARN_COLOR}"></i>肉食</span>
                 <span class="key"><i style="background:${PLANT_COLOR}"></i>草</span>
+                <span class="key"><i style="background:${SEASON_COLOR}"></i>季節</span>
             </div>
             <svg viewBox="0 0 ${CHART_WIDTH} ${CHART_HEIGHT}" preserveAspectRatio="none">
+                <polyline id="line-season" fill="none" stroke="${SEASON_COLOR}" stroke-width="1" stroke-dasharray="4 3" opacity="0.5" points=""/>
                 <polyline id="line-plant" fill="none" stroke="${PLANT_COLOR}" stroke-width="1" opacity="0.55" points=""/>
                 <polyline id="line-herb" fill="none" stroke="${HERB_COLOR}" stroke-width="1.5" points=""/>
                 <polyline id="line-carn" fill="none" stroke="${CARN_COLOR}" stroke-width="1.5" points=""/>
@@ -87,6 +100,10 @@ export function createHud(container: HTMLElement): Hud {
     container.appendChild(overEl);
 
     const q = <T extends Element>(sel: string): T => el.querySelector<T>(sel)!;
+    // The game-over veil is a sibling of the HUD, so its own children are
+    // queried within overEl — querying the HUD would return null and crash
+    // the frame loop the moment a run ends.
+    const qOver = <T extends Element>(sel: string): T => overEl.querySelector<T>(sel)!;
     const stateEl = q("#hud-state");
     const turnEl = q("#hud-turn");
     const popHerbEl = q("#pop-herb");
@@ -98,17 +115,34 @@ export function createHud(container: HTMLElement): Hud {
     const lineHerbEl = q("#line-herb");
     const lineCarnEl = q("#line-carn");
     const linePlantEl = q("#line-plant");
-    const overTitleEl = q("#over-title");
-    const overSubEl = q("#over-sub");
+    const lineSeasonEl = q("#line-season");
+    const overTitleEl = qOver("#over-title");
+    const overSubEl = qOver("#over-sub");
 
     return {
-        update(world: World, paused: boolean): void {
-            const record = world.records.at(-1);
-            const herb = world.populationOf("herbivore");
-            const carn = world.populationOf("carnivore");
-            const plantCount = world.plants.filter((p) => p.alive).length;
+        update(world: World, paused: boolean, replay?: ReplayFrame): void {
+            // While scrubbing, the live world keeps advancing; show the
+            // replayed point instead: history up to the frame's tick and the
+            // season position the frame carries.
+            const records = replay
+                ? world.records.filter((r) => r.tick <= replay.tick)
+                : world.records;
+            const record = records.at(-1);
+            const herb = replay ? replay.populations.herbivore : world.populationOf("herbivore");
+            const carn = replay ? replay.populations.carnivore : world.populationOf("carnivore");
+            const plantCount = replay ? replay.populations.plants : world.plants.filter((p) => p.alive).length;
 
-            turnEl.textContent = `回合 ${world.turn} · tick ${world.tick} · 🌱 ${plantCount}`;
+            const seasonLen = world.config.plantSeasonLength ?? 0;
+            const seasonDepth = world.config.plantSeasonDepth ?? 0.5;
+            let abundance: number | null = null;
+            if (replay) {
+                abundance = replay.seasonAbundance;
+            } else if (seasonLen > 0) {
+                abundance = world.seasonAbundance;
+            }
+            turnEl.textContent =
+                `回合 ${replay ? replay.turn : world.turn} · tick ${replay ? replay.tick : world.tick} · 🌱 ${plantCount}` +
+                (abundance === null ? "" : ` · 季節 ${Math.round(abundance * 100)}%`);
             popHerbEl.textContent = String(herb);
             popCarnEl.textContent = String(carn);
 
@@ -134,10 +168,21 @@ export function createHud(container: HTMLElement): Hud {
                 stateEl.className = paused ? "hud-state paused" : "hud-state live";
             }
 
-            if (world.records.length > 1) {
-                lineHerbEl.setAttribute("points", seriesPoints(world.records, (r) => r.populations.herbivore));
-                lineCarnEl.setAttribute("points", seriesPoints(world.records, (r) => r.populations.carnivore));
-                linePlantEl.setAttribute("points", seriesPoints(world.records, (r) => r.plantCount));
+            if (records.length > 1) {
+                lineHerbEl.setAttribute("points", seriesPoints(records, (r) => r.populations.herbivore));
+                lineCarnEl.setAttribute("points", seriesPoints(records, (r) => r.populations.carnivore));
+                linePlantEl.setAttribute("points", seriesPoints(records, (r) => r.plantCount));
+                if (seasonLen > 0) {
+                    // The season curve: where in the cycle each snapshot sat
+                    // (0 = trough, 1 = peak), pinned to fill the chart. In a
+                    // replay it ends at the scrubbed tick, not the live one.
+                    lineSeasonEl.setAttribute(
+                        "points",
+                        seriesPoints(records, (r) => seasonAbundanceAt(r.tick, seasonLen, seasonDepth), 1),
+                    );
+                } else {
+                    lineSeasonEl.setAttribute("points", "");
+                }
             }
         },
     };

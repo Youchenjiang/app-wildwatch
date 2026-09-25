@@ -117,6 +117,7 @@ function renderReplay(targetIndex: number): void {
         if (f) {
             pool.syncFrame(f, inspector.selectedId());
             ctx.atmosphere.syncSeason(f.seasonAbundance);
+            hud.update(world, paused, f);
             controls.setReplayIndex(idx, frames);
         }
     }
@@ -132,6 +133,7 @@ function renderLive(): void {
         observerCam.updateFromSim(e ? e.pos.x : null, e ? e.pos.y : null);
     }
     inspector.update(world);
+    hud.update(world, paused);
 }
 
 function frame(): void {
@@ -144,7 +146,6 @@ function frame(): void {
 
     observerCam.apply();
     ctx.renderer.render(ctx.scene, ctx.camera);
-    hud.update(world, paused);
     controls.setPaused(paused);
     controls.setReplayVisible(recorder.size > 0, recorder.size);
     requestAnimationFrame(frame);
