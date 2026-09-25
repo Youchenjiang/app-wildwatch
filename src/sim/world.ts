@@ -447,15 +447,15 @@ export class World {
     private rebuildIndexes(): void {
         this.grid.clear();
         for (const e of this.entities) {
-            if (e.alive) this.grid.insert(e.pos.x, e.pos.y, e);
+            if (e.alive) this.grid.insert(e);
         }
         this.plantGrid.clear();
         for (const p of this.plants) {
-            if (p.alive) this.plantGrid.insert(p.x, p.y, p);
+            if (p.alive) this.plantGrid.insert(p);
         }
         this.carrionGrid.clear();
         for (const c of this.carrions) {
-            if (c.alive) this.carrionGrid.insert(c.x, c.y, c);
+            if (c.alive) this.carrionGrid.insert(c);
         }
     }
 

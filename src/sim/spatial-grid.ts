@@ -13,6 +13,12 @@
  * species parameters. Filtering here fixes all of them at once, and also makes
  * a key collision between two distant cells harmless, since a colliding item
  * can no longer pass the distance test.
+ *
+ * The same accessor decides both the cell an item is filed in and the distance
+ * it is measured by, so the two can never disagree. That is why `insert` takes
+ * only the item: a separate coordinate argument would let a caller file a thing
+ * where it used to be and then have a query measure it where it is now, and
+ * every item would silently vanish from its own neighbourhood.
  */
 
 export interface Positioned {
@@ -37,9 +43,10 @@ export class SpatialGrid<T> {
         this.cells.clear();
     }
 
-    insert(x: number, y: number, item: T): void {
-        const cx = Math.floor(x / this.cellSize);
-        const cy = Math.floor(y / this.cellSize);
+    insert(item: T): void {
+        const p = this.position(item);
+        const cx = Math.floor(p.x / this.cellSize);
+        const cy = Math.floor(p.y / this.cellSize);
         const key = this.key(cx, cy);
         let bucket = this.cells.get(key);
         if (!bucket) {
