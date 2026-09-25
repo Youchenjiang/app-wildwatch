@@ -16,7 +16,8 @@ export class Entity {
     fitness = 0;
     /** Ticks before this entity may reproduce again. */
     reproduceCooldown = 0;
-    /** Lineage: [direct parent id, that parent's own parent id (or itself)]. */
+    /** Lineage: the two parents, or the same parent twice for an asexual
+     * clone. Null for a founder. See src/sim/lineage.ts for walking a chain. */
     parentIds: readonly [number, number] | null = null;
 
     /** Episodic memory: rewarding events bias later behavior within a lifetime. */

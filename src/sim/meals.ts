@@ -22,11 +22,21 @@ export interface Meal {
     energy: number;
     /** The entity's age in ticks when it ate. */
     age: number;
-    /** Id of what was eaten, when it was an animal body (prey or carrion). */
+    /** Id of the animal eaten, when the meal was an animal (prey or the body
+     * a corpse used to be). */
     victimId?: number;
     /** The victim's generation, when it was an animal — how deep into the
      * lineage this meal sat. */
     victimGeneration?: number;
+    /** True when the victim was blood kin of the eater. */
+    kin?: boolean;
+    /** Which way the kinship ran. "descendant" means the eater ate its own
+     * offspring; "ancestor" means it ate a forebear — usually a parent whose
+     * body it had not moved away from. Only set alongside `kin`. */
+    kinRelation?: "ancestor" | "descendant";
+    /** Generations separating eater and victim: 1 = parent or child, 2 =
+     * grandparent or grandchild. Only set alongside `kin`. */
+    kinGeneration?: number;
 }
 
 export interface MealCounts {
@@ -44,6 +54,8 @@ export interface MealLog {
     recent(limit: number): ReadonlyArray<Meal>;
     /** Lifetime count per source, which survives eviction of old meals. */
     counts(): MealCounts;
+    /** Lifetime count of meals that were blood kin of the eater. */
+    kinCount(): number;
 }
 
 export const DEFAULT_MEAL_CAPACITY = 24;
@@ -51,11 +63,13 @@ export const DEFAULT_MEAL_CAPACITY = 24;
 export function createMealLog(capacity = DEFAULT_MEAL_CAPACITY): MealLog {
     const meals: Meal[] = [];
     const counts: MealCounts = { plant: 0, prey: 0, carrion: 0 };
+    let kin = 0;
     return {
         add(meal: Meal): void {
             if (meals.length >= capacity) meals.shift();
             meals.push(meal);
             counts[meal.source]++;
+            if (meal.kin) kin++;
         },
 
         size(): number {
@@ -68,6 +82,10 @@ export function createMealLog(capacity = DEFAULT_MEAL_CAPACITY): MealLog {
 
         counts(): MealCounts {
             return { ...counts };
+        },
+
+        kinCount(): number {
+            return kin;
         },
     };
 }

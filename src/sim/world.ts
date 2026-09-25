@@ -6,6 +6,7 @@ import { SPECIES } from "./species";
 import type { SpeciesKind, SpeciesParams, Vec2 } from "./types";
 import { createMemory, type Memory } from "./memory";
 import { createMealLog } from "./meals";
+import { createLineage } from "./lineage";
 import { LifeGrid } from "./learning";
 import { overlaySpecies, overlayPlants } from "./era";
 
@@ -30,6 +31,8 @@ export interface Carrion {
     y: number;
     energy: number;
     alive: boolean;
+    /** The animal this body used to be, so its lineage stays knowable. */
+    fromId: number;
 }
 
 /** Per-turn population statistics — the raw material for evolution charts. */
@@ -47,6 +50,15 @@ export interface TurnRecord {
     maxFitness: Record<SpeciesKind, number>;
     /** Alive plants at snapshot time — the resource baseline for charts. */
     plantCount: number;
+    /** Cumulative corpses eaten by carnivores, and how many of those were
+     * blood kin of the eater. Cumulative, so the pair yields a lifetime rate
+     * rather than a session one. */
+    carrionMeals: number;
+    kinMeals: number;
+    /** That kin total split by direction: a forebear eaten vs an offspring
+     * eaten. Kept apart because a run shows a very lopsided split. */
+    kinAncestorMeals: number;
+    kinDescendantMeals: number;
 }
 
 export interface WorldConfig {
@@ -158,6 +170,14 @@ export class World {
     private nextId = 1;
     private births: Record<SpeciesKind, number> = EMPTY_COUNTS();
     private deaths: Record<SpeciesKind, number> = EMPTY_COUNTS();
+    /** Ancestry of every entity ever spawned, so kinship outlives the dead. */
+    private readonly lineage = createLineage();
+    private carrionMeals = 0;
+    private kinMeals = 0;
+    /** Split of `kinMeals` by direction, so the observer can see which way
+     * kinship actually shows up in a run. */
+    private kinAncestorMeals = 0;
+    private kinDescendantMeals = 0;
     /** Fractional regrow carry-over so seasonal rates stay smooth. */
     private plantRegrowAccum = 0;
     /** Set once either species has died out; the run is over (rules forbid re-seeding). */
@@ -261,8 +281,16 @@ export class World {
         if (secondParent && parent) {
             entity.parentIds = [parent.id, secondParent.id];
         } else if (parent) {
-            entity.parentIds = [parent.id, parent.parentIds ? parent.parentIds[0] : parent.id];
+            // An asexual clone has one parent, recorded twice. Slot 1 used to
+            // hold the grandparent instead, which made it mean a second parent
+            // for a mated spawn and a grandparent for a clone — so no reader
+            // could tell how far up an ancestor actually sat. Ancestry is a
+            // walk now (src/sim/lineage.ts), so the slot can just say "parent".
+            entity.parentIds = [parent.id, parent.id];
         }
+        // Record the link before the entity can ever die: the population keeps
+        // only the living, so a chain must survive its own ancestors.
+        this.lineage.add(entity.id, entity.parentIds);
         this.entities.push(entity);
         return entity;
     }
@@ -648,8 +676,34 @@ export class World {
             e.energy = Math.min(s.maxEnergy, e.energy + gained);
             e.fitness += gained;
             e.foodEaten++;
+            // Kin can only be met here, not in the hunt above: offspring
+            // always inherit their parent's species, and a carnivore only
+            // ever hunts herbivores. So a predator's relatives are
+            // carnivores, which reach it as carrion and never as prey.
+            //
+            // Both directions are asked for deliberately. A parent that
+            // dies leaves a body its offspring may still be standing next
+            // to; an offspring that dies has usually wandered off first.
+            // Checking only one way quietly reports zero forever.
+            const kin = this.lineage.kinTo(e.id, c.fromId);
             e.memory.record(inputs, steer, gained, e.age);
-            e.meals.add({ source: "carrion", energy: gained, age: e.age, victimId: c.id });
+            const meal = { source: "carrion" as const, energy: gained, age: e.age, victimId: c.fromId };
+            e.meals.add(
+                kin === null
+                    ? meal
+                    : {
+                          ...meal,
+                          kin: true,
+                          kinRelation: kin.side,
+                          kinGeneration: kin.generations,
+                      },
+            );
+            this.carrionMeals++;
+            if (kin !== null) {
+                this.kinMeals++;
+                if (kin.side === "ancestor") this.kinAncestorMeals++;
+                else this.kinDescendantMeals++;
+            }
             break;
         }
     }
@@ -723,6 +777,7 @@ export class World {
                 y: e.pos.y,
                 energy: e.energy,
                 alive: true,
+                fromId: e.id,
             });
         }
     }
@@ -763,6 +818,10 @@ export class World {
             avgFitness: EMPTY_COUNTS(),
             maxFitness: EMPTY_COUNTS(),
             plantCount: 0,
+            carrionMeals: this.carrionMeals,
+            kinMeals: this.kinMeals,
+            kinAncestorMeals: this.kinAncestorMeals,
+            kinDescendantMeals: this.kinDescendantMeals,
         };
         for (const kind of KINDS) {
             const pop = this.entities.filter((e) => e.alive && e.species.kind === kind);
@@ -803,6 +862,31 @@ export class World {
     /** The species whose extinction ended the run, or null while it continues. */
     get gameOver(): SpeciesKind | null {
         return this.gameOverBy;
+    }
+
+    /** Lifetime count of corpses eaten by carnivores. */
+    get carrionMealsEaten(): number {
+        return this.carrionMeals;
+    }
+
+    /** Lifetime count of those corpses that were blood kin of the eater. */
+    get kinMealsEaten(): number {
+        return this.kinMeals;
+    }
+
+    /** Kin meals where the eater ate a forebear (usually its own parent). */
+    get kinAncestorMealsEaten(): number {
+        return this.kinAncestorMeals;
+    }
+
+    /** Kin meals where the eater ate one of its own offspring. */
+    get kinDescendantMealsEaten(): number {
+        return this.kinDescendantMeals;
+    }
+
+    /** How many entities have recorded ancestry (groundwork for a pedigree). */
+    get lineageSize(): number {
+        return this.lineage.size();
     }
 
     /**
