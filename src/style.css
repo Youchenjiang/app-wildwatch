@@ -534,7 +534,9 @@ body {
     color: #ff7b6b;
 }
 
-#welcome button {
+/* Scoped to the start button only: a bare `#welcome button` selector would
+   also match the era cards and override their (lower-specificity) styling. */
+#welcome-start {
     margin-top: 8px;
     padding: 8px 28px;
     font-size: 14px;
@@ -548,7 +550,7 @@ body {
     transition: background 0.15s;
 }
 
-#welcome button:hover {
+#welcome-start:hover {
     background: #a8e6b8;
 }
 
@@ -599,9 +601,10 @@ body {
 }
 
 .era-card.era-selected {
-    background: rgba(143, 217, 162, 0.15);
+    background: rgba(143, 217, 162, 0.18);
     border-color: #8fd9a2;
     color: #b9e4c0;
+    box-shadow: 0 0 0 1px rgba(143, 217, 162, 0.5);
 }
 
 .era-swatch {

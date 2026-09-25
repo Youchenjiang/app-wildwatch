@@ -69,6 +69,9 @@ let replayIndex: number | null = null;
 let selectedEra: import("./sim/era").EraConfig | undefined;
 createWelcome(container, (era) => {
     selectedEra = era;
+    // The module-level world was seeded with no era; re-seed from the chosen
+    // one so the picker actually decides the run instead of only the next R.
+    restart();
     paused = false;
 }, [grasslandEra, iceAgeEra, desertEra]);
 

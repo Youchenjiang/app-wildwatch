@@ -18,7 +18,7 @@ export function createWelcome(
         .map(
             (e) => `
             <button class="era-card" data-era="${e.name}">
-                <span class="era-swatch" style="background:${e.groundColor}}"></span>
+                <span class="era-swatch" style="background:#${e.groundColor.toString(16).padStart(6, "0")}"></span>
                 <span class="era-name">${e.name}</span>
                 <span class="era-desc">${eraDescription(e)}</span>
             </button>
@@ -29,7 +29,7 @@ export function createWelcome(
         <div class="welcome-icon">🧬</div>
         <div class="welcome-title">演化觀察者</div>
         <div class="welcome-sub">
-            觀察<em>草食</em>與<em>肉食</em>物種在封閉草原上的生存競爭。
+            挑選一個場景，觀察<em>草食</em>與<em>肉食</em>物種在封閉世界中的生存競爭。
             <b>點擊個體</b>可查看其狀態與記憶。
             季節循環帶來環境壓力——留意種群的起伏。
         </div>
@@ -76,6 +76,8 @@ function eraDescription(era: EraConfig): string {
             return "溫暖草原 · 物種以現有參數運行";
         case "Ice Age":
             return "冰河世紀 · 植被稀少 · 捕食者較慢建立優勢";
+        case "Desert":
+            return "乾旱沙漠 · 植被稀疏但養分高 · 長旱季考驗耐力";
         default:
             return era.name;
     }
