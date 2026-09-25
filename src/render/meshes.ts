@@ -256,6 +256,10 @@ const BODY_TINT = new THREE.Color(1, 1, 1);
 const EXTREMITY_TINT = new THREE.Color().setRGB(0.62, 0.56, 0.52);
 /** Milder tint on ears and crests: a shade, not a marking. */
 const FEATURE_TINT = new THREE.Color().setRGB(0.88, 0.84, 0.8);
+/** Roots and stems: darker than what grows out of them, so a tuft has structure. */
+const STUMP_TINT = new THREE.Color().setRGB(0.62, 0.55, 0.47);
+/** Bone: a corpse's ribs and limbs, shaded off its own slab. */
+const BONE_TINT = new THREE.Color().setRGB(0.7, 0.64, 0.57);
 
 /** Paint every vertex one flat colour, so one material can serve both species. */
 function tinted(geometry: THREE.BufferGeometry, color: THREE.Color): THREE.BufferGeometry {
@@ -441,6 +445,147 @@ export function animalParts(kind: SpeciesKind): AnimalParts {
     return parts;
 }
 
+/**
+ * Shape of the vegetation tuft, in world units, standing on y = 0: a short
+ * stump with a few blades leaning out of it.
+ */
+export interface PlantShape {
+    /** Blades fanned around the stump. */
+    readonly blades: number;
+    readonly bladeRadius: number;
+    readonly bladeHeight: number;
+    /** Radians each blade leans away from vertical. */
+    readonly bladeLean: number;
+    readonly stumpRadius: number;
+    readonly stumpHeight: number;
+}
+
+export const PLANT_SHAPE: PlantShape = {
+    blades: 4,
+    bladeRadius: 0.2,
+    bladeHeight: 1.05,
+    bladeLean: 0.4,
+    stumpRadius: 0.2,
+    stumpHeight: 0.26,
+};
+
+/**
+ * Merge a stump and its blades into one vertex-tinted geometry.
+ *
+ * The blades are the point. A cone or a cylinder is a solid lump from the god
+ * camera — the same lump a grazing animal is — while separate blades leave gaps
+ * in the outline, and gaps are something only vegetation has. The tuft also
+ * ends up taller than it is wide, which is the opposite of a corpse and only
+ * half-way to an animal.
+ *
+ * Exported because the shape is a visual claim: the tests measure it as
+ * geometry rather than trusting this comment.
+ */
+export function buildPlantGeometry(shape: PlantShape = PLANT_SHAPE): THREE.BufferGeometry {
+    const parts: THREE.BufferGeometry[] = [];
+    const stump = new THREE.CylinderGeometry(
+        shape.stumpRadius * 0.7,
+        shape.stumpRadius,
+        shape.stumpHeight,
+        5,
+    );
+    stump.translate(0, shape.stumpHeight / 2, 0);
+    parts.push(tinted(stump, STUMP_TINT));
+
+    for (let blade = 0; blade < shape.blades; blade++) {
+        const cone = new THREE.ConeGeometry(shape.bladeRadius, shape.bladeHeight, 4);
+        // Stand the blade on its own base, lean it out of the stump, then fan it
+        // round: every blade leaves the centre, so the tips make a star instead
+        // of a dome.
+        cone.translate(0, shape.bladeHeight / 2, 0);
+        cone.rotateZ(shape.bladeLean);
+        cone.rotateY((blade / shape.blades) * Math.PI * 2);
+        cone.translate(0, shape.stumpHeight * 0.6, 0);
+        parts.push(tinted(cone, BODY_TINT));
+    }
+    return mergeGeometries(parts, false)!;
+}
+
+/**
+ * Shape of a corpse, in world units, resting on y = 0: a flattened faceted
+ * slab with a ridged spine and its limbs splayed out sideways.
+ */
+export interface CarrionShape {
+    /** Slab radii: across (x), up (y), along (z). */
+    readonly slab: readonly [number, number, number];
+    /** Radial segments of the slab. Few of them, so the outline is faceted. */
+    readonly slabFacets: number;
+    /** Spikes along the spine, leaning alternately out of it. */
+    readonly ribs: {
+        readonly count: number;
+        readonly radius: number;
+        readonly height: number;
+        readonly lean: number;
+        readonly span: number;
+    };
+    /** Limbs lying out to the sides, which is what widens the footprint. */
+    readonly limbs: {
+        readonly radius: number;
+        readonly length: number;
+        readonly spread: number;
+        readonly back: number;
+        /** Radians the limb rises off the ground over its length. */
+        readonly lift: number;
+        readonly yaw: number;
+    };
+}
+
+export const CARRION_SHAPE: CarrionShape = {
+    slab: [0.55, 0.15, 0.38],
+    slabFacets: 7,
+    ribs: { count: 3, radius: 0.075, height: 0.34, lean: 0.5, span: 0.4 },
+    limbs: { radius: 0.075, length: 0.58, spread: 0.24, back: -0.2, lift: 0.2, yaw: 0.35 },
+};
+
+/**
+ * Merge a corpse's slab, ribs and limbs into one vertex-tinted geometry.
+ *
+ * A corpse used to be a plain sphere, which is exactly the wrong shape: a
+ * living animal is a sphere too, so at the default framing a kill and a body
+ * standing over it differed only in hue — and hue is what the fog and the
+ * seasonal tint take away first. This is flat (a little over a third of the
+ * living height), faceted rather than round, and jagged at the edges, so a
+ * corpse reads as a body lying down from the outline alone.
+ *
+ * Exported for the same reason as the plant: the tests measure the claim.
+ */
+export function buildCarrionGeometry(shape: CarrionShape = CARRION_SHAPE): THREE.BufferGeometry {
+    const parts: THREE.BufferGeometry[] = [];
+    const [slabX, slabY, slabZ] = shape.slab;
+    const slab = new THREE.SphereGeometry(1, shape.slabFacets, 3);
+    slab.scale(slabX, slabY, slabZ);
+    slab.translate(0, slabY, 0); // resting on the ground, not sunk into it
+    parts.push(tinted(slab, BODY_TINT));
+
+    const { count, radius, height, lean, span } = shape.ribs;
+    for (let rib = 0; rib < count; rib++) {
+        const along = count === 1 ? 0 : rib / (count - 1) - 0.5;
+        const spike = new THREE.ConeGeometry(radius, height, 4);
+        spike.translate(0, height / 2, 0);
+        spike.rotateZ((rib % 2 === 0 ? 1 : -1) * lean);
+        spike.translate(0, slabY, along * span);
+        parts.push(tinted(spike, BONE_TINT));
+    }
+
+    const { radius: limbRadius, length, spread, back, lift, yaw } = shape.limbs;
+    for (const side of [-1, 1]) {
+        const limb = new THREE.ConeGeometry(limbRadius, length, 4);
+        limb.translate(0, length / 2, 0);
+        // Lay the limb down pointing out to the side, lifted just enough that
+        // its tip clears the ground, then swing it back from the shoulder.
+        limb.rotateZ(-side * (Math.PI / 2 - lift));
+        limb.rotateY(side * yaw);
+        limb.translate(side * spread, limbRadius, back);
+        parts.push(tinted(limb, BONE_TINT));
+    }
+    return mergeGeometries(parts, false)!;
+}
+
 /** Keeps a Three.js mesh per sim entity/plant/carrion id, reusing meshes across frames. */
 export class MeshPool {
     /** Update plant colors for a new era. Called when the player switches
@@ -458,11 +603,28 @@ export class MeshPool {
     private readonly shadowMat: THREE.MeshBasicMaterial;
     private plantPeakColor = new THREE.Color(0x3fae5a);
     private plantTroughColor = new THREE.Color(0x9a7b4d);
-
-    private readonly plantGeometry = new THREE.CylinderGeometry(0.35, 0.5, 0.8, 6);
-    private readonly carrionGeometry = new THREE.SphereGeometry(0.65, 8, 6);
-    private readonly plantMaterial = new THREE.MeshLambertMaterial({ color: 0x3fae5a });
-    private readonly carrionMaterial = new THREE.MeshLambertMaterial({ color: 0x8a7a5c });
+    /**
+     * Plants and corpses get their own silhouettes for the reason the animals
+     * do: at the default framing each is a few pixels across, the fog and the
+     * seasonal tint pull every hue toward every other, and the player has to
+     * tell a grazing animal from a plant from a body on the ground at a glance.
+     * Outline survives that, colour does not.
+     *
+     * Both are built standing on the ground plane (y = 0) at their own origin,
+     * so the pool can place them with a plain position, a plant grows upwards
+     * as the season swells it, and a corpse's base stays on the floor at every
+     * stage of its decay.
+     */
+    private readonly plantGeometry = buildPlantGeometry(PLANT_SHAPE);
+    private readonly carrionGeometry = buildCarrionGeometry(CARRION_SHAPE);
+    private readonly plantMaterial = new THREE.MeshLambertMaterial({
+        color: 0x3fae5a,
+        vertexColors: true,
+    });
+    private readonly carrionMaterial = new THREE.MeshLambertMaterial({
+        color: 0x8a7a5c,
+        vertexColors: true,
+    });
     private plantSeasonScale = 1;
     /** Seconds of wall clock driving the gait wave; refreshed by each sync. */
     private animTime = 0;
@@ -845,8 +1007,10 @@ export class MeshPool {
                 this.scene.add(mesh);
                 this.plantMeshes.set(p.id, mesh);
             }
+            // Scaled about the ground, so a lush season makes the tuft taller
+            // instead of lifting its base out of the soil.
             mesh.scale.setScalar(this.plantSeasonScale);
-            mesh.position.set(p.x, 0.35, p.y);
+            mesh.position.set(p.x, 0, p.y);
         }
         this.reap(this.plantMeshes, seenPlant);
     }
@@ -863,7 +1027,7 @@ export class MeshPool {
                 this.plantMeshes.set(id, mesh);
             }
             mesh.scale.setScalar(this.plantSeasonScale);
-            mesh.position.set(row[1], 0.35, row[2]);
+            mesh.position.set(row[1], 0, row[2]);
         }
         this.reap(this.plantMeshes, seen);
     }
@@ -888,7 +1052,9 @@ export class MeshPool {
         this.carrionPeak.set(id, peak);
         const pose = carrionPose(peak > 0 ? energy / peak : 0);
         mesh.scale.set(pose.width, pose.height, pose.width);
-        mesh.position.set(x, pose.height * 0.3, y);
+        // The geometry rests on y = 0, so the corpse lies on the ground however
+        // flat the pose squashes it rather than hovering or sinking.
+        mesh.position.set(x, 0, y);
         this.carrionSeen.set(id, { x, y, energy, width: pose.width, height: pose.height });
     }
 
@@ -981,11 +1147,11 @@ export class MeshPool {
             const eater = meal.eaterId === null ? undefined : this.npcMeshes.get(meal.eaterId);
             const targetX = eater ? eater.position.x : meal.x;
             const targetZ = eater ? eater.position.z : meal.y;
-            const targetY = eater ? eater.position.y : pose.height * 0.3;
-            // Sink to the ground when there is no eater to be pulled into.
+            const targetY = eater ? eater.position.y : 0;
+            // Rest on the ground when there is no eater to be pulled into.
             meal.mesh.position.set(
                 meal.x + (targetX - meal.x) * pose.eased,
-                pose.height * 0.3 + (targetY - pose.height * 0.3) * pose.eased,
+                targetY * pose.eased,
                 meal.y + (targetZ - meal.y) * pose.eased,
             );
         }
@@ -999,7 +1165,7 @@ export class MeshPool {
     pick(ndcX: number, ndcY: number, camera: THREE.OrthographicCamera): number | null {
         const raycaster = new THREE.Raycaster();
         raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
-        const meshes = this.pickList.map((p) => p.mesh);
+        const meshes = this.pickList.map((entry) => entry.mesh);
         // Recursive, because an animal's features are a child of its body: a
         // click on a snout belongs to the animal it is attached to.
         const hits = raycaster.intersectObjects(meshes, true);
