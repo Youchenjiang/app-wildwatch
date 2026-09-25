@@ -1,6 +1,6 @@
 import { Brain, type BrainSpec } from "./brain";
 import { Entity } from "./entity";
-import { mulberry32, randRange, type RNG } from "./rng";
+import { mulberry32, pick, randRange, type RNG } from "./rng";
 import { SpatialGrid } from "./spatial-grid";
 import { SPECIES } from "./species";
 import type { SpeciesKind, SpeciesParams, Vec2 } from "./types";
@@ -124,6 +124,35 @@ export interface WorldConfig {
     plantSeasonLength?: number;
     /** 0..1 seasonal trough depth (default 0.5): 1 starves plants fully. */
     plantSeasonDepth?: number;
+    /**
+     * How far a new plant may appear from the plant it grew from, in world
+     * units; 0 gives every plant an independent uniform position (default).
+     *
+     * This is what gives vegetation geography. An even sprinkle leaves an
+     * animal with nothing spatial to learn — food is equally dense everywhere,
+     * so "where the food is" is not a fact about any place, and the best
+     * available strategy is to eat whatever is in reach and wander. Growing
+     * from an existing plant instead makes patches, so ranging somewhere
+     * becomes worth something.
+     */
+    plantSpread?: number;
+    /**
+     * How close two plants may stand, in world units (default 0 = no limit).
+     *
+     * This is what makes a patch a patch instead of a single lump. Growing from
+     * a random existing plant is rich-get-richer — the biggest clump is the one
+     * most likely to be picked — so without a local limit the vegetation
+     * collapses into one blob and stops looking like a landscape at all. A
+     * saturated patch pushes its next seed elsewhere instead.
+     */
+    plantSpacing?: number;
+    /**
+     * 0..1 chance that a new plant colonises open ground anywhere instead of
+     * growing from an existing plant (default 0). Without any, a patch grazed
+     * to nothing could never come back and the world would end up bare rather
+     * than patchy.
+     */
+    plantColoniseChance?: number;
     /** Episodic memory capacity per entity (default 64). */
     memoryCapacity?: number;
     /** Population-level life grid cell size (default 6). */
@@ -154,6 +183,13 @@ const PREY_REFUGE_DENSITY = 0.012;
 const SATURATION_BONUS = 1.6;
 /** Floor on the catch factor when prey are critically rare (prey refuge). */
 const REFUGE_FLOOR = 0.05;
+
+/**
+ * How many spots near a parent plant a seed tries before it travels instead.
+ * Small on purpose: the cost of a wrong guess is one grid query, and a long
+ * search in a saturated patch would just be a slower way to give up.
+ */
+const PLANT_SPROUT_ATTEMPTS = 4;
 
 const EMPTY_COUNTS = (): Record<SpeciesKind, number> => ({ herbivore: 0, carnivore: 0 });
 const KINDS: readonly SpeciesKind[] = ["herbivore", "carnivore"];
@@ -272,15 +308,77 @@ export class World {
         };
     }
 
+    /**
+     * Where a new plant appears.
+     *
+     * Vegetation grows from vegetation: a plant usually comes up a short
+     * distance from an existing one, so grass forms patches with real gaps
+     * between them. A minority of plants colonise open ground anywhere, which
+     * is what lets a patch that has been grazed to nothing come back.
+     *
+     * With `plantSpread` at 0 every plant is placed independently, which is the
+     * uniform sprinkle the world used to have — kept as a setting so the two
+     * can be compared rather than argued about.
+     */
+    private plantPosition(): { x: number; y: number } {
+        const spread = this.config.plantSpread ?? 0;
+        const spacing = this.config.plantSpacing ?? 0;
+        if (spread <= 0 || this.plants.length === 0) return this.randomPos();
+        if (this.rng() < (this.config.plantColoniseChance ?? 0)) return this.randomPos();
+        for (let attempt = 0; attempt < PLANT_SPROUT_ATTEMPTS; attempt++) {
+            const parent = pick(this.rng, this.plants);
+            const angle = randRange(this.rng, 0, Math.PI * 2);
+            const reach = randRange(this.rng, 0, spread);
+            const spot = this.clampPos({
+                x: parent.x + Math.cos(angle) * reach,
+                y: parent.y + Math.sin(angle) * reach,
+            });
+            if (this.plantsNear(spot, spacing) === 0) return spot;
+        }
+        // Every spot near a parent is taken, so this one travels: a patch that
+        // has filled up seeds the ground around it instead of packing itself
+        // tighter.
+        //
+        // Landing it anywhere at all measured *better* here than steering it
+        // towards open ground, which is worth recording because the reverse
+        // looks obvious. Aiming travellers at empty space flattened the
+        // production field (dispersion 11.9 -> 5.9), weakened the gradient a
+        // forager could learn (best-patch persistence 1.44x -> 1.23x) and cost
+        // the desert its carnivores, while an unsentimental uniform landing
+        // kept patches sharp by occasionally dropping a seed back into one.
+        return this.randomPos();
+    }
+
+    /** How many living plants stand within `radius` of a spot. */
+    private plantsNear(spot: { x: number; y: number }, radius: number): number {
+        if (radius <= 0) return 0;
+        const near: Plant[] = [];
+        this.plantGrid.query(spot.x, spot.y, radius, near);
+        let count = 0;
+        for (const p of near) {
+            if (p.alive) count++;
+        }
+        return count;
+    }
+
     private spawnPlant(): void {
-        const pos = this.randomPos();
-        this.plants.push({
+        const pos = this.plantPosition();
+        const plant: Plant = {
             id: this.nextId++,
             x: pos.x,
             y: pos.y,
             energy: this.plantParams.energy,
             alive: true,
-        });
+        };
+        this.plants.push(plant);
+        // Filed the moment it grows, alongside the tick's rebuild that re-files
+        // every plant. Dispersal has to see the plants that are already
+        // standing: a seed can sprout beside one that appeared earlier in this
+        // same tick's regrowth, and filing it only at the rebuild would let the
+        // spacing check miss that neighbour and pack a saturated patch tighter
+        // than plantSpacing allows. The rebuild clears before it refills, so
+        // the plant is never in the grid twice.
+        this.plantGrid.insert(plant);
     }
 
     private spawnEntity(

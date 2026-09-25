@@ -28,6 +28,16 @@ export interface PlantOverlay {
     seasonLength?: number;
     /** 0..1 seasonal trough depth: 1 starves plants fully. */
     seasonDepth?: number;
+    /**
+     * How far a plant may grow from the plant it came from, in world units.
+     * This is the era's vegetation pattern: a tight spread gives dense clumps
+     * with wide bare ground, a loose one gives an almost even covering.
+     */
+    spread?: number;
+    /** How close two plants may stand, in world units. */
+    spacing?: number;
+    /** 0..1 chance a plant colonises open ground instead of growing from one. */
+    coloniseChance?: number;
 }
 
 /** Per-era starting population: an era's energy throughput determines how
