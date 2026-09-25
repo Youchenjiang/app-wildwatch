@@ -345,7 +345,6 @@ export function createHud(container: HTMLElement): Hud {
     // The game-over veil is a sibling of the HUD, so its own children are
     // queried within overEl — querying the HUD would return null and crash
     // the frame loop the moment a run ends.
-<<<<<<< HEAD
     const queryOver = <T extends Element>(sel: string): T => {
         const found = overEl.querySelector<T>(sel);
         if (!found) throw new Error(`Missing HUD element: ${sel}`);

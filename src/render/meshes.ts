@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { Entity } from "../sim/entity";
+import type { SpeciesKind } from "../sim/types";
 import type { Carrion, Plant, World } from "../sim/world";
 import type { ReplayFrame } from "../observe/replay";
 import type { EraConfig } from "../sim/era";
@@ -173,6 +174,159 @@ export interface RenderSubjects {
     carrions: Carrion[];
 }
 
+/**
+ * Silhouette of a species, in world units: +z is the way the animal faces and
+ * +y is up.
+ *
+ * The two species used to share one sphere-plus-nose mesh and differ only in
+ * colour, which does not survive the god camera. An animal is a handful of
+ * pixels across at the default framing, the fog and the seasonal tint wash the
+ * two hues toward each other, and a player watching a hundred of them cannot
+ * tell a hunt from a graze. An outline does survive, because the eye reads
+ * silhouette before detail at that size, so each species now gets its own body
+ * proportions and its own features.
+ *
+ * `body` is the ellipsoid's radii. Both species deliberately keep the same
+ * height (0.70): a single resting height in `poseAnimal` stands every animal on
+ * the ground, and it can only be right for both if both bodies stand as tall.
+ * Width and length are free to differ and carry the contrast — the herbivore is
+ * wide, short and round, the carnivore narrow and long, so the two footprints
+ * differ by roughly 2.7x in aspect. Features are the second read, visible when
+ * the player zooms in: ears and a stub tail on the prey, a long snout, a
+ * pointed tail and a dorsal spike on the hunter.
+ */
+export interface AnimalShape {
+    /** Body ellipsoid radii: across (x), up (y), along the heading (z). */
+    readonly body: readonly [number, number, number];
+    /** Snout cone: base radius, where it starts, and where its tip lands on z. */
+    readonly snout: { radius: number; base: number; reach: number };
+    /** Rear taper, or null for a plain rump. */
+    readonly tail: { radius: number; base: number; reach: number } | null;
+    /** Ears perked up and out from the head, or null. */
+    readonly ears: {
+        radius: number;
+        height: number;
+        spread: number;
+        back: number;
+        tilt: number;
+    } | null;
+    /** One upright spike on the spine, or null. */
+    readonly crest: { radius: number; height: number; back: number } | null;
+}
+
+export const ANIMAL_SHAPES: Record<SpeciesKind, AnimalShape> = {
+    herbivore: {
+        body: [0.8, 0.7, 0.62],
+        snout: { radius: 0.3, base: 0.24, reach: 0.92 },
+        tail: { radius: 0.15, base: -0.52, reach: -0.86 },
+        ears: { radius: 0.16, height: 0.52, spread: 0.42, back: 0.2, tilt: 0.55 },
+        crest: null,
+    },
+    carnivore: {
+        body: [0.44, 0.7, 0.92],
+        snout: { radius: 0.21, base: 0.58, reach: 1.36 },
+        tail: { radius: 0.17, base: -0.76, reach: -1.34 },
+        ears: null,
+        crest: { radius: 0.15, height: 0.44, back: -0.12 },
+    },
+};
+
+/** Full species colour for the body: vertex colours multiply the material. */
+const BODY_TINT = new THREE.Color(1, 1, 1);
+/** Head and tail are tinted down so the front and back read in flat light. */
+const EXTREMITY_TINT = new THREE.Color().setRGB(0.62, 0.56, 0.52);
+/** Milder tint on ears and crests: a shade, not a marking. */
+const FEATURE_TINT = new THREE.Color().setRGB(0.88, 0.84, 0.8);
+
+/** Paint every vertex one flat colour, so one material can serve both species. */
+function tinted(geometry: THREE.BufferGeometry, color: THREE.Color): THREE.BufferGeometry {
+    const count = geometry.attributes.position.count;
+    const colors = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+        colors[i * 3] = color.r;
+        colors[i * 3 + 1] = color.g;
+        colors[i * 3 + 2] = color.b;
+    }
+    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    return geometry;
+}
+
+/** A cone lying along the heading, its apex landing on `reach` (both on z). */
+function coneAlong(radius: number, base: number, reach: number, segments: number): THREE.BufferGeometry {
+    const cone = new THREE.ConeGeometry(radius, Math.abs(reach - base), segments);
+    // A cone's apex points along +Y: rotate it onto the heading, forwards or
+    // backwards, then slide it so the apex lands exactly on `reach`.
+    cone.rotateX(reach >= base ? Math.PI / 2 : -Math.PI / 2);
+    cone.translate(0, 0, (base + reach) / 2);
+    return cone;
+}
+
+/** Height of the body's surface above (x, z), where a feature stands. */
+function surfaceHeight(shape: AnimalShape, x: number, z: number): number {
+    const [bodyX, bodyY, bodyZ] = shape.body;
+    const inner = 1 - (x / bodyX) ** 2 - (z / bodyZ) ** 2;
+    return bodyY * Math.sqrt(Math.max(0, inner));
+}
+
+/**
+ * Merge one species' body and features into a single vertex-tinted geometry.
+ * Exported because the shapes are a visual claim: the tests check them as
+ * geometry rather than trusting the spec to have been read correctly.
+ */
+export function buildAnimalGeometry(shape: AnimalShape): THREE.BufferGeometry {
+    const [bodyX, bodyY] = shape.body;
+    const body = new THREE.SphereGeometry(1, 10, 8);
+    body.scale(bodyX, bodyY, shape.body[2]);
+    const parts = [tinted(body, BODY_TINT)];
+
+    parts.push(tinted(
+        coneAlong(shape.snout.radius, shape.snout.base, shape.snout.reach, 6),
+        EXTREMITY_TINT,
+    ));
+    if (shape.tail) {
+        parts.push(tinted(
+            coneAlong(shape.tail.radius, shape.tail.base, shape.tail.reach, 5),
+            EXTREMITY_TINT,
+        ));
+    }
+    if (shape.ears) {
+        const { radius, height, spread, back, tilt } = shape.ears;
+        for (const side of [-1, 1]) {
+            const ear = new THREE.ConeGeometry(radius, height, 5);
+            ear.rotateZ(side * tilt); // lean outwards, so a pair reads as ears
+            // Stand it on the body's surface: half of the cone rises above its
+            // own base point, and leaning tilts that rise back by cos(tilt).
+            const y = surfaceHeight(shape, side * spread, back) + (height / 2) * Math.cos(tilt);
+            ear.translate(side * spread, y, back);
+            parts.push(tinted(ear, FEATURE_TINT));
+        }
+    }
+    if (shape.crest) {
+        const { radius, height, back } = shape.crest;
+        const crest = new THREE.ConeGeometry(radius, height, 5);
+        crest.translate(0, surfaceHeight(shape, 0, back) + height / 2, back);
+        parts.push(tinted(crest, FEATURE_TINT));
+    }
+    const merged = mergeGeometries(parts, false);
+    if (!merged) {
+        throw new Error("Failed to merge animal geometries");
+    }
+    return merged;
+}
+
+/** Exactly two animal geometries are ever built, so they are cached for good. */
+const ANIMAL_GEOMETRIES = new Map<SpeciesKind, THREE.BufferGeometry>();
+
+/** The geometry drawn for a species kind, built on first use. */
+export function animalGeometry(kind: SpeciesKind): THREE.BufferGeometry {
+    let geometry = ANIMAL_GEOMETRIES.get(kind);
+    if (!geometry) {
+        geometry = buildAnimalGeometry(ANIMAL_SHAPES[kind]);
+        ANIMAL_GEOMETRIES.set(kind, geometry);
+    }
+    return geometry;
+}
+
 /** Keeps a Three.js mesh per sim entity/plant/carrion id, reusing meshes across frames. */
 export class MeshPool {
     /** Update plant colors for a new era. Called when the player switches
@@ -190,32 +344,7 @@ export class MeshPool {
     private readonly shadowMat: THREE.MeshBasicMaterial;
     private plantPeakColor = new THREE.Color(0x3fae5a);
     private plantTroughColor = new THREE.Color(0x9a7b4d);
-    /** Sphere body + small nose cone so heading stays readable from above. */
-    private readonly npcGeometry = MeshPool.buildAnimalGeometry();
-    private static buildAnimalGeometry(): THREE.BufferGeometry {
-        const body = new THREE.SphereGeometry(0.7, 10, 8);
-        // Nose points along +Z so mesh.rotation.y = angle faces the travel direction.
-        const nose = new THREE.ConeGeometry(0.22, 0.7, 6);
-        nose.rotateX(Math.PI / 2); // cone's +Y axis -> +Z
-        nose.translate(0, 0, 0.95);
-        // Give the nose a slightly darker vertex tint so the face reads from above.
-        const noseColor = new THREE.Color().setRGB(0.62, 0.56, 0.52);
-        const noseColors = new Float32Array(nose.attributes.position.count * 3);
-        for (let i = 0; i < noseColors.length; i += 3) {
-            noseColors[i] = noseColor.r;
-            noseColors[i + 1] = noseColor.g;
-            noseColors[i + 2] = noseColor.b;
-        }
-        nose.setAttribute('color', new THREE.BufferAttribute(noseColors, 3));
-        body.setAttribute('color', new THREE.BufferAttribute(
-            new Float32Array(body.attributes.position.count * 3).fill(1), 3,
-        ));
-        const merged = mergeGeometries([body, nose], true);
-        if (!merged) {
-            throw new Error("Failed to merge animal geometries");
-        }
-        return merged;
-    }
+
     private readonly plantGeometry = new THREE.CylinderGeometry(0.35, 0.5, 0.8, 6);
     private readonly carrionGeometry = new THREE.SphereGeometry(0.65, 8, 6);
     private readonly plantMaterial = new THREE.MeshLambertMaterial({ color: 0x3fae5a });
@@ -398,7 +527,8 @@ export class MeshPool {
             seenNpc.add(e.id);
             let mesh = this.npcMeshes.get(e.id);
             if (!mesh) {
-                mesh = new THREE.Mesh(this.npcGeometry, this.materialFor(e.species.color, true));
+                // The silhouette follows the species, not the colour alone.
+                mesh = new THREE.Mesh(animalGeometry(e.species.kind), this.materialFor(e.species.color, true));
                 this.scene.add(mesh);
                 this.npcMeshes.set(e.id, mesh);
             }
@@ -436,8 +566,12 @@ export class MeshPool {
             seenNpc.add(n.id);
             let mesh = this.npcMeshes.get(n.id);
             if (!mesh) {
-                const color = n.kind === 0 ? HERB_COLOR : CARN_COLOR;
-                mesh = new THREE.Mesh(this.npcGeometry, this.materialFor(color, true));
+                // Replay rows carry the species as a number (0 herbivore,
+                // 1 carnivore). The silhouette is chosen the same way the live
+                // world chooses it, so a replay shows the same animals.
+                const kind: SpeciesKind = n.kind === 0 ? "herbivore" : "carnivore";
+                const color = kind === "herbivore" ? HERB_COLOR : CARN_COLOR;
+                mesh = new THREE.Mesh(animalGeometry(kind), this.materialFor(color, true));
                 this.scene.add(mesh);
                 this.npcMeshes.set(n.id, mesh);
             }
