@@ -362,6 +362,66 @@ body {
     color: #e6cf7a;
 }
 
+#inspector .insp-mem-title {
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(130, 170, 140, 0.18);
+    font-weight: 700;
+    font-size: 10.5px;
+    color: #b9d4c2;
+}
+
+#inspector .insp-mem-empty {
+    margin-top: 4px;
+    font-size: 10px;
+    color: #8ba595;
+}
+
+#inspector .insp-mem {
+    margin-top: 3px;
+    max-height: 132px;
+    overflow-y: auto;
+}
+
+#inspector .insp-mem-head,
+#inspector .insp-mem-row {
+    display: grid;
+    grid-template-columns: 40px 1fr 36px 40px;
+    gap: 2px;
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+}
+
+#inspector .insp-mem-head {
+    color: #6f8a7a;
+    padding-bottom: 2px;
+}
+
+#inspector .insp-mem-row {
+    padding: 1px 0;
+}
+
+#inspector .insp-mem-row i {
+    font-style: normal;
+    font-weight: 700;
+}
+
+#inspector .insp-mem-row span {
+    color: #d9e7dc;
+}
+
+#inspector .insp-mem-row b {
+    font-weight: 600;
+    color: #8fdc6f;
+    text-align: right;
+}
+
+#inspector .insp-mem-row em {
+    font-style: normal;
+    color: #8ba595;
+    text-align: right;
+}
+
 /* ------------------------------------------------------- Game-over veil */
 
 #hud-over {
