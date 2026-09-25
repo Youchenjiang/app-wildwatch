@@ -28,7 +28,19 @@ export class MeshPool {
         const nose = new THREE.ConeGeometry(0.22, 0.7, 6);
         nose.rotateX(Math.PI / 2); // cone's +Y axis -> +Z
         nose.translate(0, 0, 0.95);
-        return mergeGeometries([body, nose])!;
+        // Give the nose a slightly darker vertex tint so the face reads from above.
+        const noseColor = new THREE.Color().setRGB(0.62, 0.56, 0.52);
+        const noseColors = new Float32Array(nose.attributes.position.count * 3);
+        for (let i = 0; i < noseColors.length; i += 3) {
+            noseColors[i] = noseColor.r;
+            noseColors[i + 1] = noseColor.g;
+            noseColors[i + 2] = noseColor.b;
+        }
+        nose.setAttribute('color', new THREE.BufferAttribute(noseColors, 3));
+        body.setAttribute('color', new THREE.BufferAttribute(
+            new Float32Array(body.attributes.position.count * 3).fill(1), 3,
+        ));
+        return mergeGeometries([body, nose], true)!;
     }
     private readonly plantGeometry = new THREE.CylinderGeometry(0.35, 0.5, 0.8, 6);
     private readonly carrionGeometry = new THREE.SphereGeometry(0.65, 8, 6);
@@ -56,11 +68,12 @@ export class MeshPool {
         scene.add(this.ring);
     }
 
-    private materialFor(color: number): THREE.MeshLambertMaterial {
-        let material = this.materials.get(color);
+    private materialFor(color: number, vertexColors = false): THREE.MeshLambertMaterial {
+        const key = vertexColors ? color | 0x10000000 : color;
+        let material = this.materials.get(key);
         if (!material) {
-            material = new THREE.MeshLambertMaterial({ color });
-            this.materials.set(color, material);
+            material = new THREE.MeshLambertMaterial({ color, vertexColors });
+            this.materials.set(key, material);
         }
         return material;
     }
@@ -149,7 +162,7 @@ export class MeshPool {
             seenNpc.add(e.id);
             let mesh = this.npcMeshes.get(e.id);
             if (!mesh) {
-                mesh = new THREE.Mesh(this.npcGeometry, this.materialFor(e.species.color));
+                mesh = new THREE.Mesh(this.npcGeometry, this.materialFor(e.species.color, true));
                 this.scene.add(mesh);
                 this.npcMeshes.set(e.id, mesh);
             }
@@ -173,7 +186,7 @@ export class MeshPool {
             let mesh = this.npcMeshes.get(n.id);
             if (!mesh) {
                 const color = n.kind === 0 ? HERB_COLOR : CARN_COLOR;
-                mesh = new THREE.Mesh(this.npcGeometry, this.materialFor(color));
+                mesh = new THREE.Mesh(this.npcGeometry, this.materialFor(color, true));
                 this.scene.add(mesh);
                 this.npcMeshes.set(n.id, mesh);
             }
