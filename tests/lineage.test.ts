@@ -182,8 +182,10 @@ describe("kin feeding", () => {
 
         world["kill"](child, "test");
         const corpse = world.carrions[0];
-        corpse.x = parent.pos.x;
-        corpse.y = parent.pos.y;
+        // A body lies where it fell and is filed there, so stage the meal by
+        // walking the eater to the corpse rather than the corpse to the eater.
+        parent.pos.x = corpse.x;
+        parent.pos.y = corpse.y;
         world.tickStep();
 
         const meal = parent.meals.recent(3).find((entry) => entry.source === "carrion");
@@ -205,8 +207,8 @@ describe("kin feeding", () => {
 
         world["kill"](other, "test");
         const corpse = world.carrions[0];
-        corpse.x = eater.pos.x;
-        corpse.y = eater.pos.y;
+        eater.pos.x = corpse.x;
+        eater.pos.y = corpse.y;
         world.tickStep();
 
         const meal = eater.meals.recent(3).find((entry) => entry.source === "carrion");
@@ -231,8 +233,8 @@ describe("kin feeding", () => {
         // time: first an unrelated body, then one of the eater's own children.
         world["kill"](other, "test");
         const stranger = world.carrions[0];
-        stranger.x = eater.pos.x;
-        stranger.y = eater.pos.y;
+        eater.pos.x = stranger.x;
+        eater.pos.y = stranger.y;
         world.tickStep();
 
         world["kill"](child, "test");
@@ -241,8 +243,8 @@ describe("kin feeding", () => {
         if (!kin) {
             throw new Error("Alive kin corpse not found");
         }
-        kin.x = eater.pos.x;
-        kin.y = eater.pos.y;
+        eater.pos.x = kin.x;
+        eater.pos.y = kin.y;
         world.tickStep();
 
         expect(world.carrionMealsEaten).toBe(2);

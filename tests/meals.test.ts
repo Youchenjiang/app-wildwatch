@@ -88,8 +88,10 @@ describe("meal recording", () => {
         const world = new World(makeConfig());
         const herb = world.entities[0];
         const plant = world.plants[0];
-        plant.x = herb.pos.x;
-        plant.y = herb.pos.y;
+        // Move the animal onto the plant, not the plant under the animal: a
+        // plant is filed in the index where it grew and never re-filed.
+        herb.pos.x = plant.x;
+        herb.pos.y = plant.y;
 
         world.tickStep();
 
@@ -136,8 +138,9 @@ describe("meal recording", () => {
 
         const corpse = world.carrions[0];
         expect(corpse.fromGeneration).toBe(42);
-        corpse.x = eater.pos.x;
-        corpse.y = eater.pos.y;
+        // A corpse lies where it fell: file the meal by walking the eater to it.
+        eater.pos.x = corpse.x;
+        eater.pos.y = corpse.y;
         world.tickStep();
 
         // A scavenged meal reports the body's generation just as a hunted kill

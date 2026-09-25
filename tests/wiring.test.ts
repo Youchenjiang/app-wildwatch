@@ -29,11 +29,14 @@ describe("episodic memory wiring", () => {
 
         const world = new World(config);
 
-        // Place a plant on top of the single herbivore so it eats on the first tick.
+        // Put the single herbivore on top of the plant so it eats on the first
+        // tick. The animal is the one that moves: a plant is filed in the index
+        // where it grew and is never re-filed, so shifting the plant would
+        // leave grazing unable to see it at all.
         const herb = world.entities[0];
         const plant = world.plants[0];
-        plant.x = herb.pos.x;
-        plant.y = herb.pos.y;
+        herb.pos.x = plant.x;
+        herb.pos.y = plant.y;
 
         world.tickStep();
 
@@ -82,11 +85,13 @@ describe("episodic memory wiring", () => {
         b2[0] = 1; // out0 = tanh(1)
         herb.brain = new Brain(spec, w1, b1, w2, b2);
 
-        // Plant just ahead of the heading; the turner sweeps into range in one tick.
+        // Plant just ahead of the heading; the turner sweeps into range in one
+        // tick. Placing the animal rather than the plant keeps the geometry
+        // identical (the plant is one unit ahead in +x).
         const plant = world.plants[0];
         herb.angle = 0; // heading +x
-        plant.x = herb.pos.x + 1;
-        plant.y = herb.pos.y;
+        herb.pos.x = plant.x - 1;
+        herb.pos.y = plant.y;
 
         const sense = world["sense"](herb);
         const inputs = world["buildInputs"](herb, sense);
