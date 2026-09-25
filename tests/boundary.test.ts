@@ -14,6 +14,10 @@ describe("boundary bounce", () => {
         }
     });
 
+    // 6000 ticks is several seconds of simulation on its own, and this file
+    // runs alongside every other one: the default 5s ceiling is close enough to
+    // the real runtime that a busy machine tips it over. The assertion is about
+    // how the animals behave, not how fast the CPU is.
     it("does not trap animals at edges (no wall-pinning)", () => {
         const world = new World(makeSeeding(23));
         const band = 4;
@@ -49,5 +53,5 @@ describe("boundary bounce", () => {
         expect(outward / Math.max(1, edgeSamples)).toBeLessThan(0.5);
         // Regression guard on total edge lingering (old clamp: 0.40).
         expect(edgeSamples / entitySamples).toBeLessThan(0.35);
-    });
+    }, 30_000);
 });
