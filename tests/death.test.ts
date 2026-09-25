@@ -80,8 +80,9 @@ describe("carrion deflation", () => {
     it("flattens as it settles, never taller than it is wide", () => {
         for (const remaining of [0, 0.25, 0.5, 0.75, 1]) {
             const pose = carrionPose(remaining);
-            // A fresh corpse is a round ball (height == width); it only ever
-            // gets flatter from there.
+            // At full mass the two scales are equal, so the pose itself does
+            // not flatter anything yet; from there it only ever gets flatter,
+            // on top of a corpse geometry that is already flat.
             expect(pose.height).toBeLessThanOrEqual(pose.width);
         }
         // A fresh corpse is at its roundest; a spent one is a flat smear.
