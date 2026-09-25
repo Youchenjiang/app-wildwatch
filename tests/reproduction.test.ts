@@ -103,13 +103,19 @@ describe("reproduction mode", () => {
         expect(world.sexualBirths).toBe(0);
     });
 
-    it("reports the birth split in the turn records", () => {
-        const world = new World(makeConfig("asexual"));
-        stack(world);
-        for (let i = 0; i < 400; i++) world.tickStep();
+    it("keeps the two modes apart over a long run, not just a short one", () => {
+        // The guarantee the UI leans on: a sexual run is sexual throughout, so
+        // no display needs to distinguish the two.
+        const sexual = new World(makeConfig("sexual", { herbivoreCount: 8, plantCount: 120, maxPlants: 120 }));
+        const asexual = new World(makeConfig("asexual", { herbivoreCount: 8, plantCount: 120, maxPlants: 120 }));
+        for (let i = 0; i < 2000; i++) {
+            sexual.tickStep();
+            asexual.tickStep();
+        }
 
-        const last = world.records[world.records.length - 1];
-        expect(last.sexualBirths).toBe(0);
-        expect(last.asexualBirths).toBe(world.asexualBirths);
+        expect(sexual.sexualBirths).toBeGreaterThan(0);
+        expect(sexual.asexualBirths).toBe(0);
+        expect(asexual.asexualBirths).toBeGreaterThan(0);
+        expect(asexual.sexualBirths).toBe(0);
     });
 });
