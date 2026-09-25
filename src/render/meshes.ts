@@ -175,8 +175,9 @@ export interface RenderSubjects {
 }
 
 /**
- * Silhouette of a species, in world units: +z is the way the animal faces and
- * +y is up.
+ * Silhouette of a species, in world units: +z is the way the animal faces, so
+ * the pool rotates it by pi/2 - angle to land that face on the sim's heading,
+ * and +y is up.
  *
  * The two species used to share one sphere-plus-nose mesh and differ only in
  * colour, which does not survive the god camera. An animal is a handful of
@@ -676,7 +677,13 @@ export class MeshPool {
         // The sphere rests on its radius, so the standing height tracks the
         // current y squash before the hop is added on top.
         mesh.position.set(x, pose.sy * 0.6 + pose.lift, y);
-        mesh.rotation.y = angle;
+        // Heading. The animal's snout is its own +Z, but a rotation about Y
+        // turns +Z toward +X, while the sim heads along (cos angle, sin angle)
+        // in (x, y) = scene (x, z). The two are reflections of each other, so
+        // the rotation that lands the snout on the heading is pi/2 - angle.
+        // Setting it to `angle` pointed every animal 90 degrees off except on
+        // the diagonals, where the reflection happens to be a fixed point.
+        mesh.rotation.y = Math.PI / 2 - angle;
         // Normalized 0..1 lift, so callers don't have to know the body size.
         return pose.lift / (baseScale * GAIT_HOP);
     }
