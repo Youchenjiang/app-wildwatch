@@ -1,0 +1,48 @@
+html,
+body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+    background: #10170f;
+    font-family: "Segoe UI", "Microsoft JhengHei", "PingFang TC", sans-serif;
+}
+
+#app {
+    position: fixed;
+    inset: 0;
+}
+
+#app canvas {
+    display: block;
+}
+
+#hud {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    min-width: 280px;
+    padding: 10px 14px;
+    background: rgba(10, 16, 12, 0.78);
+    border: 1px solid rgba(140, 180, 150, 0.35);
+    border-radius: 8px;
+    color: #d7e6da;
+    font-size: 13px;
+    line-height: 1.7;
+    user-select: none;
+    backdrop-filter: blur(3px);
+}
+
+#hud .hud-title {
+    margin-bottom: 4px;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: #a8e0b0;
+}
+
+#hud .hud-help {
+    margin-top: 6px;
+    font-size: 11px;
+    color: #8fa89a;
+}

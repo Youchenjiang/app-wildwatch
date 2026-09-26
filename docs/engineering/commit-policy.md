@@ -63,6 +63,35 @@ feat(timetable): add smart merged multi-section course card
 
 Pull Request 標題與 Commit Subject 遵守完全相同的格式與長度規則。
 
+### 6. PR 描述規範 (PR Body)
+
+PR 描述必須使用 [`.github/pull_request_template.md`](../../.github/pull_request_template.md) 範本，且**只保留範本結構**，不得添加範本之外的內容：
+
+- **禁止 AI 簽名**：不得加入 `🤖 Generated with ...`、`Co-Authored-By: ...` 等產生工具署名。
+- **禁止無關敘事**：不得加入流程進度、串接順序（如「PR #x of N」「Next in chain」）等與本 PR 變更內容無關的描述。
+- **Verification 必須如實勾選**：未通過的檢查不得勾選，並在 Notes 說明原因。
+
+```markdown
+## Summary
+
+<一段話說明本 PR 的目的與範圍>
+
+## Key Changes
+
+1. <獨立邏輯變更，每點對應實際改動>
+2. ...
+
+## Verification
+
+- [x] `npx tsc --noEmit` passes
+- [x] `npx vitest run` — all tests pass
+- [x] No sensitive data committed
+
+## Notes
+
+<僅列 reviewer 需要知道的事項，如 CI/設定變更、rebase 狀態；無則省略>
+```
+
 ---
 
 ## 如何修改規範
