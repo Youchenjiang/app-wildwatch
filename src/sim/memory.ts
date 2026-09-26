@@ -53,8 +53,7 @@ export function createMemory(capacity = LARGER_CAP): Memory {
             const f = feature;
             const fl = Math.min(f.length, MAX_IDX);
             const out: { episode: Episode; similarity: number }[] = [];
-            for (let i = 0; i < traces.length; i++) {
-                const t = traces[i];
+            for (const t of traces) {
                 const tf = t.feature;
                 let dot = 0;
                 let nf = 0;
