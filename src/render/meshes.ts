@@ -6,8 +6,8 @@ import type { Plant } from "../sim/world";
 export class MeshPool {
     private readonly npcMeshes = new Map<number, THREE.Mesh>();
     private readonly plantMeshes = new Map<number, THREE.Mesh>();
-    private readonly npcGeometry = new THREE.ConeGeometry(0.5, 1.0, 7);
-    private readonly plantGeometry = new THREE.CylinderGeometry(0.22, 0.34, 0.7, 5);
+    private readonly npcGeometry = new THREE.ConeGeometry(0.6, 1.4, 7);
+    private readonly plantGeometry = new THREE.CylinderGeometry(0.18, 0.28, 0.5, 5);
     private readonly plantMaterial = new THREE.MeshLambertMaterial({ color: 0x3fae5a });
     private readonly materials = new Map<number, THREE.MeshLambertMaterial>();
 

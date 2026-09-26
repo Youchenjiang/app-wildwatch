@@ -4,6 +4,8 @@ import { mulberry32, randRange, type RNG } from "./rng";
 import { SpatialGrid } from "./spatial-grid";
 import { SPECIES } from "./species";
 import type { SpeciesKind, SpeciesParams, Vec2 } from "./types";
+import { createMemory, type Memory } from "./memory";
+import { LifeGrid } from "./learning";
 
 export const DEFAULT_BRAIN_SPEC: BrainSpec = {
     inputSize: 6,
@@ -52,6 +54,14 @@ export interface WorldConfig {
     mutationRate: number;
     mutationSigma: number;
     brainSpec: BrainSpec;
+    /** Episodic memory capacity per entity (default 64). */
+    memoryCapacity?: number;
+    /** Population-level life grid cell size (default 6). */
+    lifeGridCellsize?: number;
+    /** Life-grid decay factor per turn (default 0.05). */
+    lifeGridDecay?: number;
+    /** Life-grid per-cell cap (default 20). */
+    lifeGridCap?: number;
 }
 
 interface Sense {
@@ -76,6 +86,7 @@ export class World {
 
     private readonly grid = new SpatialGrid<Entity>(10);
     private readonly plantGrid = new SpatialGrid<Plant>(10);
+    readonly lifeGrid: LifeGrid;
     private nextId = 1;
     private births: Record<SpeciesKind, number> = EMPTY_COUNTS();
     private deaths: Record<SpeciesKind, number> = EMPTY_COUNTS();
@@ -83,11 +94,17 @@ export class World {
     constructor(config: WorldConfig) {
         this.config = config;
         this.rng = mulberry32(config.seed);
+        const memCap = config.memoryCapacity ?? 64;
+        this.lifeGrid = new LifeGrid(
+            config.width,
+            config.height,
+            config.lifeGridCellsize ?? 6,
+        );
         for (let i = 0; i < config.herbivoreCount; i++) {
-            this.spawnEntity(SPECIES.herbivore, 0);
+            this.spawnEntity(SPECIES.herbivore, 0, undefined, undefined, undefined, createMemory(memCap));
         }
         for (let i = 0; i < config.carnivoreCount; i++) {
-            this.spawnEntity(SPECIES.carnivore, 0);
+            this.spawnEntity(SPECIES.carnivore, 0, undefined, undefined, undefined, createMemory(memCap));
         }
         for (let i = 0; i < config.plantCount; i++) {
             this.spawnPlant();
@@ -122,6 +139,7 @@ export class World {
         parent?: Entity,
         secondParent?: Entity,
         childEnergy?: number,
+        memory?: Memory,
     ): Entity {
         const pos = parent
             ? this.clampPos({
@@ -145,6 +163,7 @@ export class World {
             brain,
             this.nextId++,
             childEnergy ?? species.maxEnergy * 0.8,
+            memory ?? createMemory(this.config.memoryCapacity ?? 64),
         );
         entity.generation = generation;
         if (secondParent && parent) {
@@ -178,20 +197,14 @@ export class World {
             this.spawnPlant();
         }
 
-        // Rebuild spatial indexes for this tick.
-        this.grid.clear();
-        for (const e of this.entities) {
-            if (e.alive) this.grid.insert(e.pos.x, e.pos.y, e);
-        }
-        this.plantGrid.clear();
-        for (const p of this.plants) {
-            if (p.alive) this.plantGrid.insert(p.x, p.y, p);
-        }
+        this.rebuildIndexes();
 
         // Update every entity.
         for (const e of this.entities) {
             if (e.alive) this.updateEntity(e);
         }
+
+        this.recordPopulationDensity();
 
         // Sweep the dead.
         this.entities = this.entities.filter((e) => e.alive);
@@ -203,13 +216,36 @@ export class World {
         }
     }
 
+    /** Rebuild the spatial indexes for the current tick. */
+    private rebuildIndexes(): void {
+        this.grid.clear();
+        for (const e of this.entities) {
+            if (e.alive) this.grid.insert(e.pos.x, e.pos.y, e);
+        }
+        this.plantGrid.clear();
+        for (const p of this.plants) {
+            if (p.alive) this.plantGrid.insert(p.x, p.y, p);
+        }
+    }
+
+    /** Light population-level life-grid bookkeeping. */
+    private recordPopulationDensity(): void {
+        if (this.tick % 4 !== 0) return;
+        for (const e of this.entities) {
+            if (e.alive) this.lifeGrid.record(e.pos.x, e.pos.y, 0.25);
+        }
+    }
+
     private updateEntity(e: Entity): void {
         const s = e.species;
         e.age++;
         if (e.reproduceCooldown > 0) e.reproduceCooldown--;
 
         const sense = this.sense(e);
-        const out = e.brain.forward(this.buildInputs(e, sense));
+        const inputs = this.buildInputs(e, sense);
+
+        // Bias behavior with episodic recall before the brain acts.
+        const out = this.brainForwardWithRecall(e, inputs);
         const steer = out[0];
         const thrust = (out[1] + 1) / 2;
 
@@ -223,7 +259,7 @@ export class World {
 
         e.energy -= s.moveCost * (0.3 + 0.7 * thrust);
 
-        this.tryEat(e);
+        this.tryEat(e, inputs);
 
         if (e.energy >= s.reproduceEnergy) this.reproduce(e);
 
@@ -298,11 +334,24 @@ export class World {
         ];
     }
 
+    /** Forward the brain with a small episodic-recall bias on the inputs. */
+    private brainForwardWithRecall(e: Entity, inputs: readonly number[]): Float32Array {
+        const best = e.memory.recall(inputs, 1)[0];
+        if (best && best.similarity > 0.5) {
+            // Blend a small fraction of the remembered action hint as an
+            // extra input so the brain can learn to trust familiar situations.
+            const hint = Array.from(inputs);
+            hint[0] += (best.episode.actionHint * 0.15) * (1 - best.similarity);
+            return e.brain.forward(hint);
+        }
+        return e.brain.forward(inputs);
+    }
+
     // ---------------------------------------------------------------------
     // Eating / reproduction / death
     // ---------------------------------------------------------------------
 
-    private tryEat(e: Entity): void {
+    private tryEat(e: Entity, inputs: number[]): void {
         const s = e.species;
         if (s.kind === "herbivore") {
             const found = this.nearest(
@@ -316,6 +365,7 @@ export class World {
                 e.energy += found.item.energy;
                 e.fitness += found.item.energy;
                 e.foodEaten++;
+                e.memory.record(inputs, 0, found.item.energy, e.age);
             }
             return;
         }
@@ -332,6 +382,7 @@ export class World {
             e.energy += gained;
             e.fitness += gained;
             e.foodEaten++;
+            e.memory.record(inputs, 0, gained, e.age);
         }
     }
 
@@ -451,6 +502,10 @@ export class World {
         }
         this.records.push(record);
         this.turn++;
+        this.lifeGrid.decay(
+            this.config.lifeGridDecay ?? 0.05,
+            this.config.lifeGridCap ?? 20,
+        );
         this.births = EMPTY_COUNTS();
         this.deaths = EMPTY_COUNTS();
     }
