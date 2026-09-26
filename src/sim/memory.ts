@@ -36,11 +36,11 @@ export interface Memory {
 
 /** Cosine similarity of two feature vectors; 0 when either is zero-length. */
 export function cosineSimilarity(a: readonly number[], b: readonly number[]): number {
-    const n = Math.min(a.length, b.length);
+    const minLength = Math.min(a.length, b.length);
     let dot = 0;
     let na = 0;
     let nb = 0;
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < minLength; i++) {
         dot += a[i] * b[i];
         na += a[i] * a[i];
         nb += b[i] * b[i];

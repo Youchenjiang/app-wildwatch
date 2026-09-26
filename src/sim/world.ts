@@ -130,8 +130,8 @@ export function seasonalRegrowMultiplier(tick: number, seasonLength: number, dep
  */
 export function seasonAbundanceAt(tick: number, seasonLength: number, depth: number): number {
     if (seasonLength <= 0) return 0.5;
-    const m = seasonalRegrowMultiplier(tick, seasonLength, depth);
-    return (m - (1 - depth)) / (2 * depth);
+    const multiplier = seasonalRegrowMultiplier(tick, seasonLength, depth);
+    return (multiplier - (1 - depth)) / (2 * depth);
 }
 
 export class World {
