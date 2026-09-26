@@ -56,21 +56,21 @@ body {
     letter-spacing: 0.5px;
     padding: 1px 8px;
     border-radius: 999px;
-    background: rgba(90, 200, 120, 0.16);
+    background: #122417;
     border: 1px solid rgba(90, 200, 120, 0.45);
-    color: #8fd9a2;
+    color: #b4f0c2;
 }
 
 #hud .hud-state.paused {
-    background: rgba(230, 200, 90, 0.14);
+    background: #272110;
     border-color: rgba(230, 200, 90, 0.5);
-    color: #e6cf7a;
+    color: #faea8c;
 }
 
 #hud .hud-state.dead {
-    background: rgba(220, 90, 80, 0.16);
+    background: #281211;
     border-color: rgba(220, 90, 80, 0.55);
-    color: #f09a8e;
+    color: #fec5bc;
 }
 
 #hud .hud-turn {
