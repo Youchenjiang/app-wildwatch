@@ -1,6 +1,8 @@
 # 專案貢獻指南 (Contributing Guide)
 
-感謝您對 CIM-Life (中央資管通) 的貢獻！為維持程式庫之高品質與可維護性，本專案採用嚴格的 Commit 與 Pull Request 規範。
+感謝您對 **演化觀察者 (Evolution Observer)** 的貢獻！本專案是一個以 Three.js 呈現的 3D 生態演化模擬遊戲：食肉與食草動物各自擁有可演化的神經網路大腦，會隨時代與環境調整行為，以維持族群存續與繁衍。為維持程式庫之高品質與可維護性，本專案採用嚴格的 Commit 與 Pull Request 規範。
+
+專案定位、架構與操作方式請見 [README](README.md)。
 
 ---
 
@@ -35,7 +37,7 @@
 
 格式範例：
 ```text
-feat(timetable): add smart merged multi-section course card
+feat(app): give carnivores an evolvable hunting brain
 ```
 
 允許的 Type、Scope、字數限制與 Body 編號清單格式皆唯一定義於規範文件與 `scripts/commit-policy.mjs`。
@@ -61,6 +63,5 @@ feat(timetable): add smart merged multi-section course card
 
 ## 隱私與資安防護
 
-- 嚴禁提交真實學生個資、真實選課私密資料或任何 API 憑證。
+- 嚴禁提交真實個人資料、玩家存檔或模擬紀錄中的可識別資訊，以及任何 API 憑證。
 - 測試資料與 Mock Fixture 必須全面使用去識別化之合成資料。
-
