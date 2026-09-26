@@ -56,6 +56,24 @@ export class Brain {
         );
     }
 
+    /**
+     * Uniform crossover: each weight is taken from this brain or `other` with
+     * probability 0.5. Returns a NEW brain; both parents stay untouched.
+     */
+    crossover(other: Brain, rng: RNG): Brain {
+        const child = this.clone();
+        const mix = (a: Float32Array, b: Float32Array): void => {
+            for (let i = 0; i < a.length; i++) {
+                if (rng() < 0.5) a[i] = b[i];
+            }
+        };
+        mix(child.w1, other.w1);
+        mix(child.b1, other.b1);
+        mix(child.w2, other.w2);
+        mix(child.b2, other.b2);
+        return child;
+    }
+
     /** In-place gaussian mutation of every weight, applied with `rate` probability. */
     mutate(rate: number, sigma: number, rng: RNG): void {
         const apply = (a: Float32Array): void => {

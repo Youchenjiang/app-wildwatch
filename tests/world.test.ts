@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { Entity } from "../src/sim/entity";
 import { DEFAULT_BRAIN_SPEC, World, type WorldConfig } from "../src/sim/world";
 
 function makeConfig(seed = 42, overrides: Partial<WorldConfig> = {}): WorldConfig {
@@ -14,6 +15,7 @@ function makeConfig(seed = 42, overrides: Partial<WorldConfig> = {}): WorldConfi
         maxPlants: 400,
         turnLength: 50,
         populationCap: 300,
+        mateRange: 3,
         mutationRate: 0.05,
         mutationSigma: 0.3,
         brainSpec: DEFAULT_BRAIN_SPEC,
@@ -61,6 +63,42 @@ describe("World", () => {
             expect(Number.isFinite(record.avgEnergy.herbivore)).toBe(true);
             expect(Number.isFinite(record.avgEnergy.carnivore)).toBe(true);
         }
+    });
+
+    it("records fitness statistics in snapshots", () => {
+        const world = new World(makeConfig(21));
+        for (let i = 0; i < 300; i++) world.tickStep();
+        for (const record of world.records) {
+            expect(Number.isFinite(record.avgFitness.herbivore)).toBe(true);
+            expect(record.maxFitness.carnivore).toBeGreaterThanOrEqual(0);
+        }
+    });
+
+    it("produces offspring from two parents when mates are near", () => {
+        const config = makeConfig(11, {
+            herbivoreCount: 2,
+            carnivoreCount: 0,
+            plantCount: 300,
+            plantRegrowPerTick: 5,
+            turnLength: 10,
+            populationCap: 50,
+        });
+        const world = new World(config);
+        // Bring both herbivores together at full energy so they can mate.
+        for (const e of world.entities) {
+            e.pos.x = 60;
+            e.pos.y = 60;
+            e.energy = e.species.maxEnergy;
+        }
+        let child: Entity | undefined;
+        for (let i = 0; i < 200 && !child; i++) {
+            world.tickStep();
+            child = world.entities.find(
+                (x) => x.parentIds !== null && x.parentIds[0] !== x.parentIds[1],
+            );
+        }
+        expect(child).toBeDefined();
+        expect(child!.parentIds![0]).not.toBe(child!.parentIds![1]);
     });
 
     it("reproduces: births are recorded", () => {

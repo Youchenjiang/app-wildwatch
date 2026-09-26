@@ -30,6 +30,8 @@ export interface TurnRecord {
     deaths: Record<SpeciesKind, number>;
     /** Average per-weight stddev across the population (cheap diversity proxy). */
     geneDiversity: Record<SpeciesKind, number>;
+    avgFitness: Record<SpeciesKind, number>;
+    maxFitness: Record<SpeciesKind, number>;
 }
 
 export interface WorldConfig {
@@ -45,6 +47,8 @@ export interface WorldConfig {
     /** Simulation ticks between snapshots. One "turn" = one snapshot. */
     turnLength: number;
     populationCap: number;
+    /** Distance within which a same-species neighbor is eligible as a mate. */
+    mateRange: number;
     mutationRate: number;
     mutationSigma: number;
     brainSpec: BrainSpec;
@@ -58,6 +62,7 @@ interface Sense {
 
 const EMPTY_COUNTS = (): Record<SpeciesKind, number> => ({ herbivore: 0, carnivore: 0 });
 const KINDS: readonly SpeciesKind[] = ["herbivore", "carnivore"];
+const REPRODUCE_COOLDOWN = 60;
 
 export class World {
     config: WorldConfig;
@@ -115,6 +120,7 @@ export class World {
         species: SpeciesParams,
         generation: number,
         parent?: Entity,
+        secondParent?: Entity,
         childEnergy?: number,
     ): Entity {
         const pos = parent
@@ -125,7 +131,9 @@ export class World {
             : this.randomPos();
         const brain = parent
             ? (() => {
-                  const child = parent.brain.clone();
+                  const child = secondParent
+                      ? parent.brain.crossover(secondParent.brain, this.rng)
+                      : parent.brain.clone();
                   child.mutate(this.config.mutationRate, this.config.mutationSigma, this.rng);
                   return child;
               })()
@@ -139,7 +147,11 @@ export class World {
             childEnergy ?? species.maxEnergy * 0.8,
         );
         entity.generation = generation;
-        entity.parentIds = parent ? [parent.id, parent.parentIds ? parent.parentIds[0] : parent.id] : null;
+        if (secondParent && parent) {
+            entity.parentIds = [parent.id, secondParent.id];
+        } else if (parent) {
+            entity.parentIds = [parent.id, parent.parentIds ? parent.parentIds[0] : parent.id];
+        }
         this.entities.push(entity);
         return entity;
     }
@@ -194,6 +206,7 @@ export class World {
     private updateEntity(e: Entity): void {
         const s = e.species;
         e.age++;
+        if (e.reproduceCooldown > 0) e.reproduceCooldown--;
 
         const sense = this.sense(e);
         const out = e.brain.forward(this.buildInputs(e, sense));
@@ -301,6 +314,7 @@ export class World {
             if (found) {
                 found.item.alive = false;
                 e.energy += found.item.energy;
+                e.fitness += found.item.energy;
                 e.foodEaten++;
             }
             return;
@@ -314,7 +328,9 @@ export class World {
         if (found) {
             const meat = found.item.energy;
             this.kill(found.item, "preyed");
-            e.energy += meat * 0.6 + s.foodEnergy;
+            const gained = meat * 0.6 + s.foodEnergy;
+            e.energy += gained;
+            e.fitness += gained;
             e.foodEaten++;
         }
     }
@@ -327,12 +343,51 @@ export class World {
         }
         if (alive >= this.config.populationCap) return;
 
+        // Prefer sexual reproduction with a nearby eligible mate; fall back
+        // to asexual cloning so lone survivors can still propagate.
+        const mate = this.findMate(e);
         const childEnergy = s.reproduceCost / s.litterSize;
+        const generation = mate
+            ? Math.max(e.generation, mate.generation) + 1
+            : e.generation + 1;
         for (let i = 0; i < s.litterSize; i++) {
-            this.spawnEntity(s, e.generation + 1, e, childEnergy);
+            this.spawnEntity(s, generation, e, mate ?? undefined, childEnergy);
         }
-        e.energy -= s.reproduceCost;
+        if (mate) {
+            e.energy -= s.reproduceCost / 2;
+            mate.energy -= s.reproduceCost / 2;
+            mate.reproduceCooldown = REPRODUCE_COOLDOWN;
+        } else {
+            e.energy -= s.reproduceCost;
+        }
+        e.reproduceCooldown = REPRODUCE_COOLDOWN;
         this.births[s.kind] += s.litterSize;
+    }
+
+    private findMate(e: Entity): Entity | null {
+        const candidates: Entity[] = [];
+        this.grid.query(e.pos.x, e.pos.y, this.config.mateRange, candidates);
+        let best: Entity | null = null;
+        let bestD2 = Infinity;
+        for (const other of candidates) {
+            if (
+                other === e ||
+                !other.alive ||
+                other.species.kind !== e.species.kind ||
+                other.energy < other.species.reproduceEnergy ||
+                other.reproduceCooldown > 0
+            ) {
+                continue;
+            }
+            const dx = other.pos.x - e.pos.x;
+            const dy = other.pos.y - e.pos.y;
+            const d2 = dx * dx + dy * dy;
+            if (d2 < bestD2) {
+                bestD2 = d2;
+                best = other;
+            }
+        }
+        return best;
     }
 
     private kill(e: Entity, _reason: string): void {
@@ -374,6 +429,8 @@ export class World {
             births: { ...this.births },
             deaths: { ...this.deaths },
             geneDiversity: EMPTY_COUNTS(),
+            avgFitness: EMPTY_COUNTS(),
+            maxFitness: EMPTY_COUNTS(),
         };
         for (const kind of KINDS) {
             const pop = this.entities.filter((e) => e.alive && e.species.kind === kind);
@@ -385,6 +442,12 @@ export class World {
                 ? pop.reduce((sum, e) => sum + e.generation, 0) / pop.length
                 : 0;
             record.geneDiversity[kind] = this.geneDiversity(kind);
+            record.avgFitness[kind] = pop.length
+                ? pop.reduce((sum, e) => sum + e.fitness, 0) / pop.length
+                : 0;
+            record.maxFitness[kind] = pop.length
+                ? Math.max(...pop.map((e) => e.fitness))
+                : 0;
         }
         this.records.push(record);
         this.turn++;

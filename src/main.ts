@@ -19,6 +19,7 @@ function makeConfig(): WorldConfig {
         maxPlants: 600,
         turnLength: 100,
         populationCap: 500,
+        mateRange: 3,
         mutationRate: 0.06,
         mutationSigma: 0.35,
         brainSpec: DEFAULT_BRAIN_SPEC,
