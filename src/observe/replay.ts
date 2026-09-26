@@ -84,7 +84,7 @@ export class ReplayRecorder {
 
     /** The most recent frame, or null when nothing recorded yet. */
     latest(): ReplayFrame | null {
-        return this.frames.length ? this.frames[this.frames.length - 1] : null;
+        return this.frames.at(-1) ?? null;
     }
 
     /** Frame by index (0 = oldest retained), or null when out of range. */
