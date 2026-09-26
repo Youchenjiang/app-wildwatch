@@ -685,6 +685,24 @@ export class World {
         return this.gameOverBy;
     }
 
+    /**
+     * Observer tool (docs/game-rules.md "觀察者工具"): end the run early.
+     * Purely observational from the sim's perspective — it stops the loop;
+     * it never edits entity state.
+     */
+    terminate(): void {
+        if (this.gameOverBy !== null) return;
+        const herb = this.populationOf("herbivore");
+        const carn = this.populationOf("carnivore");
+        if (herb === 0) {
+            this.gameOverBy = "herbivore";
+        } else if (carn === 0) {
+            this.gameOverBy = "carnivore";
+        } else {
+            this.gameOverBy = herb <= carn ? "herbivore" : "carnivore";
+        }
+    }
+
     avgEnergyOf(kind: SpeciesKind): number {
         let sum = 0;
         let count = 0;
