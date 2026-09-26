@@ -197,27 +197,14 @@ export class World {
             this.spawnPlant();
         }
 
-        // Rebuild spatial indexes for this tick.
-        this.grid.clear();
-        for (const e of this.entities) {
-            if (e.alive) this.grid.insert(e.pos.x, e.pos.y, e);
-        }
-        this.plantGrid.clear();
-        for (const p of this.plants) {
-            if (p.alive) this.plantGrid.insert(p.x, p.y, p);
-        }
+        this.rebuildIndexes();
 
         // Update every entity.
         for (const e of this.entities) {
             if (e.alive) this.updateEntity(e);
         }
 
-        // Light population-level life-grid bookkeeping.
-        if (this.tick % 4 === 0) {
-            for (const e of this.entities) {
-                if (e.alive) this.lifeGrid.record(e.pos.x, e.pos.y, 0.25);
-            }
-        }
+        this.recordPopulationDensity();
 
         // Sweep the dead.
         this.entities = this.entities.filter((e) => e.alive);
@@ -226,6 +213,26 @@ export class World {
         // Turn snapshot.
         if (this.tick % this.config.turnLength === 0) {
             this.recordSnapshot();
+        }
+    }
+
+    /** Rebuild the spatial indexes for the current tick. */
+    private rebuildIndexes(): void {
+        this.grid.clear();
+        for (const e of this.entities) {
+            if (e.alive) this.grid.insert(e.pos.x, e.pos.y, e);
+        }
+        this.plantGrid.clear();
+        for (const p of this.plants) {
+            if (p.alive) this.plantGrid.insert(p.x, p.y, p);
+        }
+    }
+
+    /** Light population-level life-grid bookkeeping. */
+    private recordPopulationDensity(): void {
+        if (this.tick % 4 !== 0) return;
+        for (const e of this.entities) {
+            if (e.alive) this.lifeGrid.record(e.pos.x, e.pos.y, 0.25);
         }
     }
 
