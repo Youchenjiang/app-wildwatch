@@ -1,3 +1,4 @@
+import { seasonAbundanceAt } from "../sim/world";
 import type { World } from "../sim/world";
 
 /**
@@ -17,6 +18,8 @@ export interface ReplayFrame {
     /** [id, x, y, energy] per carrion. */
     carrions: number[][];
     populations: { herbivore: number; carnivore: number; plants: number };
+    /** Normalized season position at this tick (0 = trough, 1 = peak); null when seasons are off. */
+    seasonAbundance: number | null;
 }
 
 export class ReplayRecorder {
@@ -64,6 +67,8 @@ export class ReplayRecorder {
         const carrions = world.carrions
             .filter((c) => c.alive)
             .map((c) => [c.id, round2(c.x), round2(c.y), round2(c.energy)]);
+        const seasonLength = world.config.plantSeasonLength ?? 0;
+        const seasonDepth = world.config.plantSeasonDepth ?? 0.5;
         this.frames.push({
             tick: world.tick,
             turn: world.turn,
@@ -75,6 +80,8 @@ export class ReplayRecorder {
                 carnivore: world.populationOf("carnivore"),
                 plants: plants.length,
             },
+            seasonAbundance:
+                seasonLength > 0 ? seasonAbundanceAt(world.tick, seasonLength, seasonDepth) : null,
         });
         if (this.frames.length > this.capacity) {
             this.frames.shift();

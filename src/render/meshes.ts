@@ -24,6 +24,10 @@ export class MeshPool {
     private readonly carrionGeometry = new THREE.SphereGeometry(0.45, 6, 5);
     private readonly plantMaterial = new THREE.MeshLambertMaterial({ color: 0x3fae5a });
     private readonly carrionMaterial = new THREE.MeshLambertMaterial({ color: 0x8a7a5c });
+    // Seasonal tint: plants lerp from dry brown (trough) to lush green (peak).
+    private readonly plantPeakColor = new THREE.Color(0x3fae5a);
+    private readonly plantTroughColor = new THREE.Color(0x9a7b4d);
+    private plantSeasonScale = 1;
     private readonly materials = new Map<number, THREE.MeshLambertMaterial>();
     /** Flat list of animal meshes with ids, rebuilt each sync, for click picking. */
     private pickList: Array<{ id: number; mesh: THREE.Mesh }> = [];
@@ -77,6 +81,8 @@ export class MeshPool {
         world: World,
         selectedId: number | null = null,
     ): void {
+        const seasonal = (world.config.plantSeasonLength ?? 0) > 0;
+        this.syncSeason(seasonal ? world.seasonAbundance : null);
         this.syncSubjects({ entities: world.entities, plants: world.plants, carrions: world.carrions }, selectedId);
     }
 
@@ -94,6 +100,9 @@ export class MeshPool {
     /** Draw a recorded replay frame instead of the live world. */
     syncFrame(frame: ReplayFrame, selectedId: number | null = null): void {
         this.selectedId = selectedId;
+        // Replays carry their own season position: plants tint and size with
+        // the historical tick (null means seasons were off — neutral look).
+        this.syncSeason(frame.seasonAbundance);
         const npcLike = frame.entities.map((row) => ({
             id: row[0],
             kind: row[1],
@@ -108,8 +117,19 @@ export class MeshPool {
     }
 
     // ------------------------------------------------------------------
-    // Live-object syncs
+    // Season & live-object syncs
     // ------------------------------------------------------------------
+
+    /** Shift the whole biome with the season: lush at the peak, dry at the trough. */
+    private syncSeason(abundance: number | null): void {
+        if (abundance === null) {
+            this.plantMaterial.color.copy(this.plantPeakColor);
+            this.plantSeasonScale = 1;
+            return;
+        }
+        this.plantMaterial.color.copy(this.plantTroughColor).lerp(this.plantPeakColor, abundance);
+        this.plantSeasonScale = 0.7 + 0.6 * abundance;
+    }
 
     private syncNpcs(entities: Entity[]): void {
         const seenNpc = new Set<number>();
@@ -168,6 +188,7 @@ export class MeshPool {
                 this.scene.add(mesh);
                 this.plantMeshes.set(p.id, mesh);
             }
+            mesh.scale.setScalar(this.plantSeasonScale);
             mesh.position.set(p.x, 0.35, p.y);
         }
         this.reap(this.plantMeshes, seenPlant);
@@ -184,6 +205,7 @@ export class MeshPool {
                 this.scene.add(mesh);
                 this.plantMeshes.set(id, mesh);
             }
+            mesh.scale.setScalar(this.plantSeasonScale);
             mesh.position.set(row[1], 0.35, row[2]);
         }
         this.reap(this.plantMeshes, seen);

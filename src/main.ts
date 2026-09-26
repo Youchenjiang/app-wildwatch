@@ -116,6 +116,7 @@ function renderReplay(targetIndex: number): void {
         const f = recorder.frameAt(idx);
         if (f) {
             pool.syncFrame(f, inspector.selectedId());
+            ctx.atmosphere.syncSeason(f.seasonAbundance);
             controls.setReplayIndex(idx, frames);
         }
     }
@@ -125,6 +126,7 @@ function renderReplay(targetIndex: number): void {
 function renderLive(): void {
     const selectedId = inspector.selectedId();
     pool.sync(world, selectedId);
+    ctx.atmosphere.syncSeason((world.config.plantSeasonLength ?? 0) > 0 ? world.seasonAbundance : null);
     if (selectedId !== null) {
         const e = world.entities.find((x) => x.id === selectedId && x.alive);
         observerCam.updateFromSim(e ? e.pos.x : null, e ? e.pos.y : null);
