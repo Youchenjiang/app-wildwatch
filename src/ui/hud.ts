@@ -35,7 +35,11 @@ export function createHud(container: HTMLElement): Hud {
                     ].toFixed(1)} · 生 ${record.births[kind]} 死 ${record.deaths[kind]} · 多樣性 ${record.geneDiversity[
                         kind
                     ].toFixed(3)}`;
-                statsEl.innerHTML = `🌿 ${line("herbivore")}<br>🦁 ${line("carnivore")}`;
+                statsEl.replaceChildren(
+                    `🌿 ${line("herbivore")}`,
+                    document.createElement("br"),
+                    `🦁 ${line("carnivore")}`,
+                );
             }
         },
     };
