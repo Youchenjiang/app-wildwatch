@@ -21,3 +21,7 @@ enabled = true
 [[analyzers]]
 name = "css"
 enabled = true
+
+[[analyzers]]
+name = "secrets"
+enabled = true
