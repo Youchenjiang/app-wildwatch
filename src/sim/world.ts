@@ -262,33 +262,41 @@ export class World {
         }
 
         this.recordPopulationDensity();
+        this.checkExtinction();
+        this.sweepTheDead();
+        this.decayCarrion();
 
-        // Either species dying out ends the run: no re-seeding, ever.
-        if (this.gameOverBy === null) {
-            for (const kind of KINDS) {
-                if (this.populationOf(kind) === 0) {
-                    this.gameOverBy = kind;
-                    break;
-                }
+        // Turn snapshot.
+        if (this.tick % this.config.turnLength === 0) {
+            this.recordSnapshot();
+        }
+    }
+
+    /** Either species dying out ends the run: no re-seeding, ever. */
+    private checkExtinction(): void {
+        if (this.gameOverBy !== null) return;
+        for (const kind of KINDS) {
+            if (this.populationOf(kind) === 0) {
+                this.gameOverBy = kind;
+                break;
             }
         }
+    }
 
-        // Sweep the dead.
+    /** Drop the dead entities and plants after a tick. */
+    private sweepTheDead(): void {
         this.entities = this.entities.filter((e) => e.alive);
         this.plants = this.plants.filter((p) => p.alive);
+    }
 
-        // Carrion decays naturally; fully decayed corpses vanish (rule 6).
+    /** Carrion decays naturally; fully decayed corpses vanish (rule 6). */
+    private decayCarrion(): void {
         const decay = this.config.carrionDecayPerTick ?? 0.05;
         for (const c of this.carrions) {
             if (c.alive) c.energy -= decay;
             if (c.energy <= 0) c.alive = false;
         }
         this.carrions = this.carrions.filter((c) => c.alive);
-
-        // Turn snapshot.
-        if (this.tick % this.config.turnLength === 0) {
-            this.recordSnapshot();
-        }
     }
 
     /** Rebuild the spatial indexes for the current tick. */
@@ -363,6 +371,12 @@ export class World {
         return found;
     }
 
+    private queryCarrion(at: Vec2, radius: number): Carrion[] {
+        const found: Carrion[] = [];
+        this.carrionGrid.query(at.x, at.y, radius, found);
+        return found;
+    }
+
     /** Closest candidate that passes `accept`, measured from `from`. */
     private nearest<T>(
         candidates: readonly T[],
@@ -400,46 +414,38 @@ export class World {
         return found ? { dx: found.dx, dy: found.dy, dist: Math.sqrt(found.d2) } : null;
     }
 
+    /** Nearest live carnivore within sense range (herbivore threat sense). */
+    private nearestThreat(e: Entity): { dx: number; d2: number } | null {
+        const s = e.species;
+        const found = this.nearest(
+            this.queryEntities(e.pos, s.senseRange),
+            (other) => other.alive && other.species.kind === "carnivore",
+            (other) => other.pos,
+            e.pos,
+        );
+        return found ? { dx: found.dx, d2: found.d2 } : null;
+    }
+
+    /** Nearest live carrion within sense range (carnivore scavenging sense). */
+    private nearestCarrion(e: Entity): { dx: number; d2: number } | null {
+        const s = e.species;
+        const found = this.nearest(
+            this.queryCarrion(e.pos, s.senseRange),
+            (c) => c.alive,
+            (c) => c,
+            e.pos,
+        );
+        return found ? { dx: found.dx, d2: found.d2 } : null;
+    }
+
     private buildInputs(e: Entity, sense: Sense | null): number[] {
         const s = e.species;
         const dist = sense ? Math.min(1, sense.dist / s.senseRange) : 1;
-        // Herbivores also sense the nearest carnivore so they can evolve flight.
-        // Carnivores also sense the nearest carrion so they can evolve scavenging.
-        let threatDx = 0;
-        let threatDist = 1;
-        let carrionDx = 0;
-        let carrionDist = 1;
-        if (s.kind === "herbivore") {
-            const threats: Entity[] = [];
-            this.grid.query(e.pos.x, e.pos.y, s.senseRange, threats);
-            let bestD2 = Infinity;
-            for (const t of threats) {
-                if (!t.alive || t.species.kind !== "carnivore") continue;
-                const dx = t.pos.x - e.pos.x;
-                const dy = t.pos.y - e.pos.y;
-                const d2 = dx * dx + dy * dy;
-                if (d2 < bestD2) {
-                    bestD2 = d2;
-                    threatDx = dx / s.senseRange;
-                    threatDist = Math.min(1, Math.sqrt(d2) / s.senseRange);
-                }
-            }
-        } else {
-            const corpses: Carrion[] = [];
-            this.carrionGrid.query(e.pos.x, e.pos.y, s.senseRange, corpses);
-            let bestD2 = Infinity;
-            for (const c of corpses) {
-                if (!c.alive) continue;
-                const dx = c.x - e.pos.x;
-                const dy = c.y - e.pos.y;
-                const d2 = dx * dx + dy * dy;
-                if (d2 < bestD2) {
-                    bestD2 = d2;
-                    carrionDx = dx / s.senseRange;
-                    carrionDist = Math.min(1, Math.sqrt(d2) / s.senseRange);
-                }
-            }
-        }
+        // Herbivores sense the nearest carnivore so they can evolve flight;
+        // carnivores sense the nearest carrion so they can evolve scavenging.
+        const isHerbivore = s.kind === "herbivore";
+        const threat = isHerbivore ? this.nearestThreat(e) : null;
+        const carrion = isHerbivore ? null : this.nearestCarrion(e);
         return [
             Math.sin(e.angle),
             Math.cos(e.angle),
@@ -447,9 +453,9 @@ export class World {
             sense ? sense.dy / s.senseRange : 0,
             dist,
             Math.min(1, e.energy / s.maxEnergy),
-            threatDx,
-            threatDist,
-            s.kind === "herbivore" ? 0 : carrionDx,
+            threat ? threat.dx / s.senseRange : 0,
+            threat ? Math.min(1, Math.sqrt(threat.d2) / s.senseRange) : 1,
+            carrion ? carrion.dx / s.senseRange : 0,
         ];
     }
 
