@@ -20,7 +20,6 @@ export function createInspector(container: HTMLElement): EntityInspector {
     container.appendChild(card);
 
     let current: number | null = null;
-    let frozen = false;
     let cached: Entity | null = null;
 
     function render(e: Entity, frozenNow: boolean): void {
@@ -54,23 +53,20 @@ export function createInspector(container: HTMLElement): EntityInspector {
         return selfRef!;
     }
 
-    return (selfRef = {
+    const inspector: EntityInspector = {
         show(id: number): void {
             current = id;
-            frozen = false;
             cached = null;
             card.hidden = false;
         },
         hide(): void {
             current = null;
-            frozen = false;
             cached = null;
             card.hidden = true;
         },
         update(world: World | null): void {
             if (current === null) return;
             if (world === null) {
-                frozen = true;
                 return;
             }
             const e = world.entities.find((x) => x.id === current && x.alive);
@@ -81,11 +77,12 @@ export function createInspector(container: HTMLElement): EntityInspector {
                 return;
             }
             cached = e;
-            frozen = false;
             render(e, false);
         },
         selectedId(): number | null {
             return current;
         },
-    });
+    };
+    selfRef = inspector;
+    return inspector;
 }
