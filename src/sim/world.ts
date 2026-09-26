@@ -8,12 +8,21 @@ import { createMemory, type Memory } from "./memory";
 import { LifeGrid } from "./learning";
 
 export const DEFAULT_BRAIN_SPEC: BrainSpec = {
-    inputSize: 6,
+    inputSize: 9,
     hiddenSize: 5,
     outputSize: 2,
 };
 
 export interface Plant {
+    id: number;
+    x: number;
+    y: number;
+    energy: number;
+    alive: boolean;
+}
+
+/** A dead animal: returns its unconsumed energy to the environment (rule 6). */
+export interface Carrion {
     id: number;
     x: number;
     y: number;
@@ -34,6 +43,8 @@ export interface TurnRecord {
     geneDiversity: Record<SpeciesKind, number>;
     avgFitness: Record<SpeciesKind, number>;
     maxFitness: Record<SpeciesKind, number>;
+    /** Alive plants at snapshot time — the resource baseline for charts. */
+    plantCount: number;
 }
 
 export interface WorldConfig {
@@ -62,6 +73,8 @@ export interface WorldConfig {
     lifeGridDecay?: number;
     /** Life-grid per-cell cap (default 20). */
     lifeGridCap?: number;
+    /** Energy a corpse loses per tick as it decays (default 0.05). */
+    carrionDecayPerTick?: number;
 }
 
 interface Sense {
@@ -69,6 +82,15 @@ interface Sense {
     dy: number;
     dist: number;
 }
+
+/** Chance a carnivore catches prey on contact; below 1 lets prey escape. */
+const CATCH_CHANCE = 0.4;
+/** Prey density at which hunts reach full saturation. */
+const PREY_REFUGE_DENSITY = 0.012;
+/** Extra catch-rate multiplier when prey are abundant. */
+const SATURATION_BONUS = 1.6;
+/** Floor on the catch factor when prey are critically rare (prey refuge). */
+const REFUGE_FLOOR = 0.05;
 
 const EMPTY_COUNTS = (): Record<SpeciesKind, number> => ({ herbivore: 0, carnivore: 0 });
 const KINDS: readonly SpeciesKind[] = ["herbivore", "carnivore"];
@@ -79,6 +101,7 @@ export class World {
     rng: RNG;
     entities: Entity[] = [];
     plants: Plant[] = [];
+    carrions: Carrion[] = [];
     records: TurnRecord[] = [];
 
     tick = 0;
@@ -86,10 +109,13 @@ export class World {
 
     private readonly grid = new SpatialGrid<Entity>(10);
     private readonly plantGrid = new SpatialGrid<Plant>(10);
+    private readonly carrionGrid = new SpatialGrid<Carrion>(10);
     readonly lifeGrid: LifeGrid;
     private nextId = 1;
     private births: Record<SpeciesKind, number> = EMPTY_COUNTS();
     private deaths: Record<SpeciesKind, number> = EMPTY_COUNTS();
+    /** Set once either species has died out; the run is over (rules forbid re-seeding). */
+    private gameOverBy: SpeciesKind | null = null;
 
     constructor(config: WorldConfig) {
         this.config = config;
@@ -162,7 +188,7 @@ export class World {
             randRange(this.rng, 0, Math.PI * 2),
             brain,
             this.nextId++,
-            childEnergy ?? species.maxEnergy * 0.8,
+            childEnergy ?? species.reproduceEnergy * 0.5,
             memory ?? createMemory(this.config.memoryCapacity ?? 64),
         );
         entity.generation = generation;
@@ -183,6 +209,37 @@ export class World {
         };
     }
 
+    /**
+     * Rule 7: reflect an entity's heading off a wall it has crossed, with a
+     * little jitter so crowds do not march in lockstep. Without this, animals
+     * pin against walls (position clamped, heading unchanged) and pile up at
+     * edges and corners.
+     */
+    private bounceOffWalls(e: Entity): void {
+        const m = 0.5;
+        let bounced = false;
+        if (e.pos.x <= m || e.pos.x >= this.config.width - m) {
+            e.angle = Math.PI - e.angle + randRange(this.rng, -0.3, 0.3);
+            bounced = true;
+        }
+        if (e.pos.y <= m || e.pos.y >= this.config.height - m) {
+            e.angle = -e.angle + randRange(this.rng, -0.3, 0.3);
+            bounced = true;
+        }
+        const clamped = this.clampPos(e.pos);
+        e.pos.x = clamped.x;
+        e.pos.y = clamped.y;
+        if (bounced) {
+            // Step the entity back inward along its new heading so it does
+            // not re-trigger the bounce on the next tick.
+            e.pos.x += Math.cos(e.angle) * 0.5;
+            e.pos.y += Math.sin(e.angle) * 0.5;
+            const inner = this.clampPos(e.pos);
+            e.pos.x = inner.x;
+            e.pos.y = inner.y;
+        }
+    }
+
     // ---------------------------------------------------------------------
     // Main loop
     // ---------------------------------------------------------------------
@@ -191,7 +248,7 @@ export class World {
     tickStep(): void {
         this.tick++;
 
-        // Plants regrow at a steady rate (era-dependent rate comes later).
+        // Plants regrow at a steady rate, capped by world carrying capacity.
         for (let i = 0; i < this.config.plantRegrowPerTick; i++) {
             if (this.plants.length >= this.config.maxPlants) break;
             this.spawnPlant();
@@ -205,15 +262,41 @@ export class World {
         }
 
         this.recordPopulationDensity();
-
-        // Sweep the dead.
-        this.entities = this.entities.filter((e) => e.alive);
-        this.plants = this.plants.filter((p) => p.alive);
+        this.checkExtinction();
+        this.sweepTheDead();
+        this.decayCarrion();
 
         // Turn snapshot.
         if (this.tick % this.config.turnLength === 0) {
             this.recordSnapshot();
         }
+    }
+
+    /** Either species dying out ends the run: no re-seeding, ever. */
+    private checkExtinction(): void {
+        if (this.gameOverBy !== null) return;
+        for (const kind of KINDS) {
+            if (this.populationOf(kind) === 0) {
+                this.gameOverBy = kind;
+                break;
+            }
+        }
+    }
+
+    /** Drop the dead entities and plants after a tick. */
+    private sweepTheDead(): void {
+        this.entities = this.entities.filter((e) => e.alive);
+        this.plants = this.plants.filter((p) => p.alive);
+    }
+
+    /** Carrion decays naturally; fully decayed corpses vanish (rule 6). */
+    private decayCarrion(): void {
+        const decay = this.config.carrionDecayPerTick ?? 0.05;
+        for (const c of this.carrions) {
+            if (c.alive) c.energy -= decay;
+            if (c.energy <= 0) c.alive = false;
+        }
+        this.carrions = this.carrions.filter((c) => c.alive);
     }
 
     /** Rebuild the spatial indexes for the current tick. */
@@ -225,6 +308,10 @@ export class World {
         this.plantGrid.clear();
         for (const p of this.plants) {
             if (p.alive) this.plantGrid.insert(p.x, p.y, p);
+        }
+        this.carrionGrid.clear();
+        for (const c of this.carrions) {
+            if (c.alive) this.carrionGrid.insert(c.x, c.y, c);
         }
     }
 
@@ -253,9 +340,9 @@ export class World {
         const speed = s.speed * (0.2 + 0.8 * thrust);
         e.pos.x += Math.cos(e.angle) * speed;
         e.pos.y += Math.sin(e.angle) * speed;
-        const clamped = this.clampPos(e.pos);
-        e.pos.x = clamped.x;
-        e.pos.y = clamped.y;
+        // Closed world: hitting a boundary is a physical bounce (rule 7),
+        // so animals slide off walls instead of pinning against them.
+        this.bounceOffWalls(e);
 
         e.energy -= s.moveCost * (0.3 + 0.7 * thrust);
 
@@ -281,6 +368,12 @@ export class World {
     private queryEntities(at: Vec2, radius: number): Entity[] {
         const found: Entity[] = [];
         this.grid.query(at.x, at.y, radius, found);
+        return found;
+    }
+
+    private queryCarrion(at: Vec2, radius: number): Carrion[] {
+        const found: Carrion[] = [];
+        this.carrionGrid.query(at.x, at.y, radius, found);
         return found;
     }
 
@@ -321,9 +414,38 @@ export class World {
         return found ? { dx: found.dx, dy: found.dy, dist: Math.sqrt(found.d2) } : null;
     }
 
+    /** Nearest live carnivore within sense range (herbivore threat sense). */
+    private nearestThreat(e: Entity): { dx: number; d2: number } | null {
+        const s = e.species;
+        const found = this.nearest(
+            this.queryEntities(e.pos, s.senseRange),
+            (other) => other.alive && other.species.kind === "carnivore",
+            (other) => other.pos,
+            e.pos,
+        );
+        return found ? { dx: found.dx, d2: found.d2 } : null;
+    }
+
+    /** Nearest live carrion within sense range (carnivore scavenging sense). */
+    private nearestCarrion(e: Entity): { dx: number; d2: number } | null {
+        const s = e.species;
+        const found = this.nearest(
+            this.queryCarrion(e.pos, s.senseRange),
+            (c) => c.alive,
+            (c) => c,
+            e.pos,
+        );
+        return found ? { dx: found.dx, d2: found.d2 } : null;
+    }
+
     private buildInputs(e: Entity, sense: Sense | null): number[] {
         const s = e.species;
         const dist = sense ? Math.min(1, sense.dist / s.senseRange) : 1;
+        // Herbivores sense the nearest carnivore so they can evolve flight;
+        // carnivores sense the nearest carrion so they can evolve scavenging.
+        const isHerbivore = s.kind === "herbivore";
+        const threat = isHerbivore ? this.nearestThreat(e) : null;
+        const carrion = isHerbivore ? null : this.nearestCarrion(e);
         return [
             Math.sin(e.angle),
             Math.cos(e.angle),
@@ -331,6 +453,9 @@ export class World {
             sense ? sense.dy / s.senseRange : 0,
             dist,
             Math.min(1, e.energy / s.maxEnergy),
+            threat ? threat.dx / s.senseRange : 0,
+            threat ? Math.min(1, Math.sqrt(threat.d2) / s.senseRange) : 1,
+            carrion ? carrion.dx / s.senseRange : 0,
         ];
     }
 
@@ -376,13 +501,36 @@ export class World {
             e.pos,
         );
         if (found) {
-            const meat = found.item.energy;
-            this.kill(found.item, "preyed");
-            const gained = meat * 0.6 + s.foodEnergy;
-            e.energy += gained;
+            // Type-III functional response with a hard prey refuge: when
+            // prey are rare, hunts almost always fail, so predators starve
+            // back before they can finish the prey off. When prey are
+            // abundant, hunts saturate and predators can boom.
+            const preyDensity =
+                this.populationOf("herbivore") / (this.config.width * this.config.height);
+            const scarcity = Math.min(1, preyDensity / PREY_REFUGE_DENSITY);
+            const factor = scarcity * scarcity * scarcity * SATURATION_BONUS + REFUGE_FLOOR;
+            if (this.rng() < CATCH_CHANCE * factor) {
+                const meat = found.item.energy;
+                this.kill(found.item, "preyed");
+                const gained = Math.min(meat * 0.6, s.maxEnergy * 0.5) + s.foodEnergy;
+                e.energy += gained;
+                e.fitness += gained;
+                e.foodEaten++;
+                e.memory.record(inputs, 0, gained, e.age);
+            }
+        }
+        // Scavenging: carrion is free energy with no hunt risk (rule 6).
+        const corpses: Carrion[] = [];
+        this.carrionGrid.query(e.pos.x, e.pos.y, s.eatRadius, corpses);
+        for (const c of corpses) {
+            if (!c.alive) continue;
+            const gained = c.energy;
+            c.alive = false;
+            e.energy = Math.min(s.maxEnergy, e.energy + gained);
             e.fitness += gained;
             e.foodEaten++;
             e.memory.record(inputs, 0, gained, e.age);
+            break;
         }
     }
 
@@ -397,7 +545,9 @@ export class World {
         // Prefer sexual reproduction with a nearby eligible mate; fall back
         // to asexual cloning so lone survivors can still propagate.
         const mate = this.findMate(e);
-        const childEnergy = s.reproduceCost / s.litterSize;
+        // Newborns start well below the breeding threshold: they must eat
+        // before they can reproduce, which tempers exponential booms.
+        const childEnergy = s.reproduceEnergy * 0.25;
         const generation = mate
             ? Math.max(e.generation, mate.generation) + 1
             : e.generation + 1;
@@ -445,6 +595,16 @@ export class World {
         if (!e.alive) return;
         e.alive = false;
         this.deaths[e.species.kind]++;
+        // The body stays behind with its remaining energy (rule 6: carrion).
+        if (e.energy > 0) {
+            this.carrions.push({
+                id: this.nextId++,
+                x: e.pos.x,
+                y: e.pos.y,
+                energy: e.energy,
+                alive: true,
+            });
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -482,6 +642,7 @@ export class World {
             geneDiversity: EMPTY_COUNTS(),
             avgFitness: EMPTY_COUNTS(),
             maxFitness: EMPTY_COUNTS(),
+            plantCount: 0,
         };
         for (const kind of KINDS) {
             const pop = this.entities.filter((e) => e.alive && e.species.kind === kind);
@@ -500,6 +661,7 @@ export class World {
                 ? Math.max(...pop.map((e) => e.fitness))
                 : 0;
         }
+        record.plantCount = this.plants.filter((p) => p.alive).length;
         this.records.push(record);
         this.turn++;
         this.lifeGrid.decay(
@@ -516,6 +678,11 @@ export class World {
             if (e.alive && e.species.kind === kind) count++;
         }
         return count;
+    }
+
+    /** The species whose extinction ended the run, or null while it continues. */
+    get gameOver(): SpeciesKind | null {
+        return this.gameOverBy;
     }
 
     avgEnergyOf(kind: SpeciesKind): number {

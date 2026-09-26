@@ -13,6 +13,7 @@ export function createHud(container: HTMLElement): Hud {
         <div class="hud-row" id="hud-turn">回合 0 · tick 0</div>
         <div class="hud-row" id="hud-pop">—</div>
         <div class="hud-row" id="hud-stats">—</div>
+        <div class="hud-over" id="hud-over" hidden></div>
         <div class="hud-help">空白鍵 暫停 · + / - 速度 · R 重設</div>
     `;
     container.appendChild(el);
@@ -20,6 +21,7 @@ export function createHud(container: HTMLElement): Hud {
     const turnEl = el.querySelector<HTMLElement>("#hud-turn")!;
     const popEl = el.querySelector<HTMLElement>("#hud-pop")!;
     const statsEl = el.querySelector<HTMLElement>("#hud-stats")!;
+    const overEl = el.querySelector<HTMLElement>("#hud-over")!;
 
     return {
         update(world: World): void {
@@ -40,6 +42,14 @@ export function createHud(container: HTMLElement): Hud {
                     document.createElement("br"),
                     `🦁 ${line("carnivore")}`,
                 );
+            }
+            const over = world.gameOver;
+            if (over !== null) {
+                const name = over === "herbivore" ? "草食" : "肉食";
+                overEl.hidden = false;
+                overEl.textContent = `💀 ${name}族群滅絕 — 本次訓練結束（回合 ${world.turn} · tick ${world.tick}）· 按 R 重新投放`;
+            } else {
+                overEl.hidden = true;
             }
         },
     };

@@ -1,36 +1,13 @@
 import "./style.css";
-import { DEFAULT_BRAIN_SPEC, World, type WorldConfig } from "./sim/world";
+import { World } from "./sim/world";
+import { makeSeeding } from "./sim/seeding";
 import { createRenderContext, resizeContext } from "./render/scene";
 import { MeshPool } from "./render/meshes";
 import { createHud } from "./ui/hud";
 
 const container = document.getElementById("app")!;
 
-function makeConfig(): WorldConfig {
-    return {
-        width: 120,
-        height: 120,
-        seed: 20260907,
-        herbivoreCount: 60,
-        carnivoreCount: 16,
-        plantCount: 240,
-        plantRegrowPerTick: 4,
-        plantEnergy: 18,
-        maxPlants: 600,
-        turnLength: 100,
-        populationCap: 500,
-        mateRange: 3,
-    mutationRate: 0.06,
-    mutationSigma: 0.35,
-    brainSpec: DEFAULT_BRAIN_SPEC,
-    memoryCapacity: 64,
-    lifeGridCellsize: 6,
-    lifeGridDecay: 0.05,
-    lifeGridCap: 20,
-};
-}
-
-let world = new World(makeConfig());
+let world = new World(makeSeeding());
 const ctx = createRenderContext(container, world.config.width, world.config.height);
 const pool = new MeshPool(ctx.scene);
 const hud = createHud(container);
@@ -47,17 +24,20 @@ window.addEventListener("keydown", (event) => {
     } else if (event.key === "-" || event.key === "_") {
         ticksPerFrame = Math.max(1, ticksPerFrame - 5);
     } else if (event.key === "r" || event.key === "R") {
-        world = new World(makeConfig());
+        world = new World(makeSeeding());
         pool.reset();
         (window as unknown as { world?: World }).world = world;
     }
 });
 
 function frame(): void {
-    if (!paused) {
-        for (let i = 0; i < ticksPerFrame; i++) world.tickStep();
+    if (!paused && world.gameOver === null) {
+        for (let i = 0; i < ticksPerFrame; i++) {
+            if (world.gameOver !== null) break;
+            world.tickStep();
+        }
     }
-    pool.sync(world.entities, world.plants);
+    pool.sync(world.entities, world.plants, world.carrions);
     ctx.renderer.render(ctx.scene, ctx.camera);
     hud.update(world);
     requestAnimationFrame(frame);

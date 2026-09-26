@@ -41,6 +41,16 @@ body {
     color: #a8e0b0;
 }
 
+#hud .hud-over {
+    margin-top: 6px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: rgba(120, 30, 30, 0.55);
+    border: 1px solid rgba(200, 80, 80, 0.6);
+    color: #ffb9b0;
+    font-weight: 600;
+}
+
 #hud .hud-help {
     margin-top: 6px;
     font-size: 11px;
