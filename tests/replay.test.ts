@@ -24,9 +24,11 @@ describe("ReplayRecorder", () => {
         expect(rec.size).toBe(30);
         const f = rec.latest();
         expect(f).not.toBeNull();
-        expect(f!.tick).toBe(300);
-        expect(f!.populations.herbivore).toBe(b.populationOf("herbivore"));
-        expect(f!.populations.carnivore).toBe(b.populationOf("carnivore"));
+        if (f) {
+            expect(f.tick).toBe(300);
+            expect(f.populations.herbivore).toBe(b.populationOf("herbivore"));
+            expect(f.populations.carnivore).toBe(b.populationOf("carnivore"));
+        }
     });
 
     it("carries the season position of each captured tick", () => {
@@ -40,15 +42,28 @@ describe("ReplayRecorder", () => {
 
         // Seasons are on in the default seeding: every frame carries a 0..1
         // abundance matching the exact tick it was captured at.
-        const frames = [rec.frameAt(0)!, rec.frameAt(10)!, rec.latest()!];
-        for (const f of frames) {
-            expect(f.seasonAbundance).not.toBeNull();
-            expect(f.seasonAbundance!).toBeGreaterThanOrEqual(0);
-            expect(f.seasonAbundance!).toBeLessThanOrEqual(1);
-            expect(f.seasonAbundance).toBeCloseTo(
-                seasonAbundanceAt(f.tick, season.plantSeasonLength!, season.plantSeasonDepth!),
-                5,
-            );
+        const f0 = rec.frameAt(0);
+        const f10 = rec.frameAt(10);
+        const latest = rec.latest();
+        expect(f0).not.toBeNull();
+        expect(f10).not.toBeNull();
+        expect(latest).not.toBeNull();
+        if (f0 && f10 && latest) {
+            const frames = [f0, f10, latest];
+            const seasonLen = season.plantSeasonLength ?? 0;
+            const seasonDepth = season.plantSeasonDepth ?? 0;
+            for (const f of frames) {
+                expect(f.seasonAbundance).not.toBeNull();
+                const sa = f.seasonAbundance;
+                if (sa !== null) {
+                    expect(sa).toBeGreaterThanOrEqual(0);
+                    expect(sa).toBeLessThanOrEqual(1);
+                    expect(sa).toBeCloseTo(
+                        seasonAbundanceAt(f.tick, seasonLen, seasonDepth),
+                        5,
+                    );
+                }
+            }
         }
     });
 
@@ -59,7 +74,9 @@ describe("ReplayRecorder", () => {
             world.tickStep();
             if (rec.shouldCapture(world.tick)) rec.capture(world);
         }
-        expect(rec.latest()!.seasonAbundance).toBeNull();
+        const latest = rec.latest();
+        expect(latest).not.toBeNull();
+        expect(latest?.seasonAbundance).toBeNull();
     });
 
     it("honors the ring buffer capacity", () => {
