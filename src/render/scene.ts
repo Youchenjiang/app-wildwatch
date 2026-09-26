@@ -50,9 +50,10 @@ export class Atmosphere {
         this.sun.position.set(-50, 130, 30);
         scene.add(this.sun);
 
+        this.groundMat = new THREE.MeshLambertMaterial({ color: 0x2e4631 });
         const ground = new THREE.Mesh(
             new THREE.PlaneGeometry(worldWidth, worldHeight),
-            (this.groundMat = new THREE.MeshLambertMaterial({ color: 0x2e4631 })),
+            this.groundMat,
         );
         ground.rotation.x = -Math.PI / 2;
         ground.position.set(worldWidth / 2, 0, worldHeight / 2);
