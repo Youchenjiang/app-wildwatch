@@ -30,6 +30,14 @@ export class MeshPool {
         this.plantMeshes.clear();
     }
 
+    private reap(pool: Map<number, THREE.Mesh>, seen: Set<number>): void {
+        for (const [id, mesh] of pool) {
+            if (seen.has(id)) continue;
+            this.scene.remove(mesh);
+            pool.delete(id);
+        }
+    }
+
     sync(entities: Entity[], plants: Plant[]): void {
         const seenNpc = new Set<number>();
         for (const e of entities) {
@@ -46,12 +54,7 @@ export class MeshPool {
             mesh.position.set(e.pos.x, scale * 0.6, e.pos.y);
             mesh.rotation.y = e.angle;
         }
-        for (const [id, mesh] of this.npcMeshes) {
-            if (!seenNpc.has(id)) {
-                this.scene.remove(mesh);
-                this.npcMeshes.delete(id);
-            }
-        }
+        this.reap(this.npcMeshes, seenNpc);
 
         const seenPlant = new Set<number>();
         for (const p of plants) {
@@ -65,11 +68,6 @@ export class MeshPool {
             }
             mesh.position.set(p.x, 0.35, p.y);
         }
-        for (const [id, mesh] of this.plantMeshes) {
-            if (!seenPlant.has(id)) {
-                this.scene.remove(mesh);
-                this.plantMeshes.delete(id);
-            }
-        }
+        this.reap(this.plantMeshes, seenPlant);
     }
 }
