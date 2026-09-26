@@ -88,8 +88,8 @@ export class Atmosphere {
 
     /** Shift the whole biome mood with the season; null restores the peak look. */
     syncSeason(abundance: number | null): void {
-        const a = abundance === null ? 1 : clamp01(abundance);
-        const trough = 1 - a;
+        const seasonalAbundance = abundance === null ? 1 : clamp01(abundance);
+        const trough = 1 - seasonalAbundance;
         (this.scene.background as THREE.Color).set(this.bgPeak).lerp(this.bgTrough, trough);
         (this.scene.fog as THREE.Fog).color.set(this.bgPeak).lerp(this.bgTrough, trough);
         this.hemi.color.set(this.hemiSkyPeak).lerp(this.hemiSkyTrough, trough);
