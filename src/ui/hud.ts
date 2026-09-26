@@ -23,7 +23,7 @@ export function createHud(container: HTMLElement): Hud {
 
     return {
         update(world: World): void {
-            const record = world.records[world.records.length - 1];
+            const record = world.records.at(-1);
             turnEl.textContent = `回合 ${world.turn} · tick ${world.tick}`;
             popEl.textContent =
                 `🌿 草食 ${world.populationOf("herbivore")} · 🦁 肉食 ${world.populationOf("carnivore")}` +
