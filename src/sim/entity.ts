@@ -21,15 +21,19 @@ export class Entity {
     /** Episodic memory: rewarding events bias later behavior within a lifetime. */
     memory: Memory;
 
+    /** The evolvable genome; mutable so experiments may inject genomes. */
+    brain: Brain;
+
     constructor(
         readonly species: SpeciesParams,
         readonly pos: Vec2,
         angle: number,
-        readonly brain: Brain,
+        brain: Brain,
         id: number,
         energy: number,
         memory: Memory,
     ) {
+        this.brain = brain;
         this.angle = angle;
         this.id = id;
         this.energy = energy;

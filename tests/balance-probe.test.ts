@@ -17,15 +17,13 @@ function makeConfig(overrides: Partial<WorldConfig> = {}): WorldConfig {
     return { ...makeSeeding(), ...overrides };
 }
 
-/** Candidate seedings: vary plant inflow, predator load and population cap. */
+/** Candidate seedings: vary plant inflow, resource base, and predator load. */
 const SEEDINGS: ReadonlyArray<{ label: string; overrides: Partial<WorldConfig> }> = [
-    { label: "r1 c4", overrides: { plantRegrowPerTick: 1, carnivoreCount: 4 } },
-    { label: "r1 c6", overrides: { plantRegrowPerTick: 1, carnivoreCount: 6 } },
-    { label: "r2 c4", overrides: { plantRegrowPerTick: 2, carnivoreCount: 4 } },
-    { label: "r2 c4 cap160", overrides: { plantRegrowPerTick: 2, carnivoreCount: 4, populationCap: 160 } },
-    { label: "r3 c4 cap200", overrides: { plantRegrowPerTick: 3, carnivoreCount: 4, populationCap: 200 } },
-    { label: "r3 c6 cap200", overrides: { plantRegrowPerTick: 3, carnivoreCount: 6, populationCap: 200 } },
-    { label: "r2 c6 cap160", overrides: { plantRegrowPerTick: 2, carnivoreCount: 6, populationCap: 160 } },
+    { label: "r1 c4 mp500", overrides: { plantRegrowPerTick: 1, carnivoreCount: 4, maxPlants: 500 } },
+    { label: "r1 c4 pe22", overrides: { plantRegrowPerTick: 1, carnivoreCount: 4, plantEnergy: 22 } },
+    { label: "r2 c4 mp500", overrides: { plantRegrowPerTick: 2, carnivoreCount: 4, maxPlants: 500 } },
+    { label: "r1 c3 mp500", overrides: { plantRegrowPerTick: 1, carnivoreCount: 3, maxPlants: 500 } },
+    { label: "r2 c3 mp500", overrides: { plantRegrowPerTick: 2, carnivoreCount: 3, maxPlants: 500 } },
 ];
 
 const MAX_TICKS = 30000;
