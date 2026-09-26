@@ -3,7 +3,7 @@ import { Entity } from "./entity";
 import { mulberry32, randRange, type RNG } from "./rng";
 import { SpatialGrid } from "./spatial-grid";
 import { SPECIES } from "./species";
-import type { SpeciesKind, SpeciesParams } from "./types";
+import type { SpeciesKind, SpeciesParams, Vec2 } from "./types";
 
 export const DEFAULT_BRAIN_SPEC: BrainSpec = {
     inputSize: 6,
@@ -223,38 +223,53 @@ export class World {
     // Sensing -> brain inputs
     // ---------------------------------------------------------------------
 
-    private sense(e: Entity): Sense | null {
-        const s = e.species;
-        let best: Sense | null = null;
+    private queryPlants(at: Vec2, radius: number): Plant[] {
+        const found: Plant[] = [];
+        this.plantGrid.query(at.x, at.y, radius, found);
+        return found;
+    }
+
+    private queryEntities(at: Vec2, radius: number): Entity[] {
+        const found: Entity[] = [];
+        this.grid.query(at.x, at.y, radius, found);
+        return found;
+    }
+
+    /** Closest candidate that passes `accept`, measured from `from`. */
+    private nearest<T>(
+        candidates: readonly T[],
+        accept: (candidate: T) => boolean,
+        pos: (candidate: T) => Vec2,
+        from: Vec2,
+    ): { item: T; dx: number; dy: number; d2: number } | null {
+        let best: { item: T; dx: number; dy: number; d2: number } | null = null;
         let bestD2 = Infinity;
-        if (s.kind === "herbivore") {
-            const plants: Plant[] = [];
-            this.plantGrid.query(e.pos.x, e.pos.y, s.senseRange, plants);
-            for (const p of plants) {
-                if (!p.alive) continue;
-                const dx = p.x - e.pos.x;
-                const dy = p.y - e.pos.y;
-                const d2 = dx * dx + dy * dy;
-                if (d2 < bestD2) {
-                    bestD2 = d2;
-                    best = { dx, dy, dist: Math.sqrt(d2) };
-                }
-            }
-        } else {
-            const prey: Entity[] = [];
-            this.grid.query(e.pos.x, e.pos.y, s.senseRange, prey);
-            for (const p of prey) {
-                if (!p.alive || p.species.kind !== "herbivore") continue;
-                const dx = p.pos.x - e.pos.x;
-                const dy = p.pos.y - e.pos.y;
-                const d2 = dx * dx + dy * dy;
-                if (d2 < bestD2) {
-                    bestD2 = d2;
-                    best = { dx, dy, dist: Math.sqrt(d2) };
-                }
+        for (const candidate of candidates) {
+            if (!accept(candidate)) continue;
+            const at = pos(candidate);
+            const dx = at.x - from.x;
+            const dy = at.y - from.y;
+            const d2 = dx * dx + dy * dy;
+            if (d2 < bestD2) {
+                bestD2 = d2;
+                best = { item: candidate, dx, dy, d2 };
             }
         }
         return best;
+    }
+
+    private sense(e: Entity): Sense | null {
+        const s = e.species;
+        const found =
+            s.kind === "herbivore"
+                ? this.nearest(this.queryPlants(e.pos, s.senseRange), (p) => p.alive, (p) => p, e.pos)
+                : this.nearest(
+                      this.queryEntities(e.pos, s.senseRange),
+                      (p) => p.alive && p.species.kind === "herbivore",
+                      (p) => p.pos,
+                      e.pos,
+                  );
+        return found ? { dx: found.dx, dy: found.dy, dist: Math.sqrt(found.d2) } : null;
     }
 
     private buildInputs(e: Entity, sense: Sense | null): number[] {
@@ -277,46 +292,30 @@ export class World {
     private tryEat(e: Entity): void {
         const s = e.species;
         if (s.kind === "herbivore") {
-            const candidates: Plant[] = [];
-            this.plantGrid.query(e.pos.x, e.pos.y, s.eatRadius, candidates);
-            let best: Plant | null = null;
-            let bestD2 = Infinity;
-            for (const p of candidates) {
-                if (!p.alive) continue;
-                const dx = p.x - e.pos.x;
-                const dy = p.y - e.pos.y;
-                const d2 = dx * dx + dy * dy;
-                if (d2 < bestD2) {
-                    bestD2 = d2;
-                    best = p;
-                }
-            }
-            if (best) {
-                best.alive = false;
-                e.energy += best.energy;
+            const found = this.nearest(
+                this.queryPlants(e.pos, s.eatRadius),
+                (p) => p.alive,
+                (p) => p,
+                e.pos,
+            );
+            if (found) {
+                found.item.alive = false;
+                e.energy += found.item.energy;
                 e.foodEaten++;
             }
-        } else {
-            const candidates: Entity[] = [];
-            this.grid.query(e.pos.x, e.pos.y, s.eatRadius, candidates);
-            let best: Entity | null = null;
-            let bestD2 = Infinity;
-            for (const p of candidates) {
-                if (!p.alive || p.species.kind !== "herbivore") continue;
-                const dx = p.pos.x - e.pos.x;
-                const dy = p.pos.y - e.pos.y;
-                const d2 = dx * dx + dy * dy;
-                if (d2 < bestD2) {
-                    bestD2 = d2;
-                    best = p;
-                }
-            }
-            if (best) {
-                const meat = best.energy;
-                this.kill(best, "preyed");
-                e.energy += meat * 0.6 + s.foodEnergy;
-                e.foodEaten++;
-            }
+            return;
+        }
+        const found = this.nearest(
+            this.queryEntities(e.pos, s.eatRadius),
+            (p) => p.alive && p.species.kind === "herbivore",
+            (p) => p.pos,
+            e.pos,
+        );
+        if (found) {
+            const meat = found.item.energy;
+            this.kill(found.item, "preyed");
+            e.energy += meat * 0.6 + s.foodEnergy;
+            e.foodEaten++;
         }
     }
 
@@ -336,11 +335,10 @@ export class World {
         this.births[s.kind] += s.litterSize;
     }
 
-    private kill(e: Entity, reason: string): void {
+    private kill(e: Entity, _reason: string): void {
         if (!e.alive) return;
         e.alive = false;
         this.deaths[e.species.kind]++;
-        void reason;
     }
 
     // ---------------------------------------------------------------------
