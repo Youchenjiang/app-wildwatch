@@ -5,8 +5,8 @@ import { createRenderContext, resizeContext, type RenderContext } from "./render
 import { MeshPool } from "./render/meshes";
 import { ObserverCamera } from "./render/camera";
 import { createHud } from "./ui/hud";
-import { createControls, type Controls } from "./ui/controls";
-import { createInspector, type EntityInspector } from "./ui/inspector";
+import { createControls } from "./ui/controls";
+import { createInspector } from "./ui/inspector";
 import { ReplayRecorder } from "./observe/replay";
 
 const container = document.getElementById("app")!;
@@ -100,36 +100,44 @@ function restart(): void {
     (window as unknown as { world?: World }).world = world;
 }
 
-function frame(): void {
-    const running = !paused && world.gameOver === null;
-    if (running) {
-        for (let i = 0; i < ticksPerFrame; i++) {
-            if (world.gameOver !== null) break;
-            world.tickStep();
-            if (recorder.shouldCapture(world.tick)) recorder.capture(world);
+function stepSimulation(): void {
+    if (paused || world.gameOver !== null) return;
+    for (let i = 0; i < ticksPerFrame; i++) {
+        if (world.gameOver !== null) break;
+        world.tickStep();
+        if (recorder.shouldCapture(world.tick)) recorder.capture(world);
+    }
+}
+
+function renderReplay(targetIndex: number): void {
+    const frames = recorder.size;
+    if (frames > 0) {
+        const idx = Math.min(Math.max(0, targetIndex), frames - 1);
+        const f = recorder.frameAt(idx);
+        if (f) {
+            pool.syncFrame(f, inspector.selectedId());
+            controls.setReplayIndex(idx, frames);
         }
     }
+    inspector.update(null);
+}
 
-    // What we draw: replay frame or the live world.
-    const replayIndexNow = replayIndex;
-    if (replayIndexNow !== null) {
-        const frames = recorder.size;
-        if (frames > 0) {
-            const idx = Math.min(Math.max(0, replayIndexNow), frames - 1);
-            const f = recorder.frameAt(idx);
-            if (f) {
-                pool.syncFrame(f, inspector.selectedId());
-                controls.setReplayIndex(idx, frames);
-            }
-        }
-        inspector.update(null);
+function renderLive(): void {
+    const selectedId = inspector.selectedId();
+    pool.sync(world, selectedId);
+    if (selectedId !== null) {
+        const e = world.entities.find((x) => x.id === selectedId && x.alive);
+        observerCam.updateFromSim(e ? e.pos.x : null, e ? e.pos.y : null);
+    }
+    inspector.update(world);
+}
+
+function frame(): void {
+    stepSimulation();
+    if (replayIndex !== null) {
+        renderReplay(replayIndex);
     } else {
-        pool.sync(world, inspector.selectedId());
-        if (inspector.selectedId() !== null) {
-            const e = world.entities.find((x) => x.id === inspector.selectedId() && x.alive);
-            observerCam.updateFromSim(e ? e.pos.x : null, e ? e.pos.y : null);
-        }
-        inspector.update(world);
+        renderLive();
     }
 
     observerCam.apply();
