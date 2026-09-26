@@ -694,7 +694,13 @@ export class World {
         if (this.gameOverBy !== null) return;
         const herb = this.populationOf("herbivore");
         const carn = this.populationOf("carnivore");
-        this.gameOverBy = herb === 0 ? "herbivore" : carn === 0 ? "carnivore" : herb <= carn ? "herbivore" : "carnivore";
+        if (herb === 0) {
+            this.gameOverBy = "herbivore";
+        } else if (carn === 0) {
+            this.gameOverBy = "carnivore";
+        } else {
+            this.gameOverBy = herb <= carn ? "herbivore" : "carnivore";
+        }
     }
 
     avgEnergyOf(kind: SpeciesKind): number {
