@@ -51,12 +51,26 @@ main ──▶ merge PR #1 ──▶ merge PR #2 ──▶ merge PR #N
 3. 確認本地通過所有檢查後再 push 並開 PR：
    ```bash
    npm run typecheck && npm run test:policy && npm test
-   git push --force-with-lease origin feature/<next-name>
+   ```
+   push 的方式取決於**歷史有沒有被改寫**，不是每輪都用 force：
+
+   - **只是追加 commit**（例如在已開啟、尚未合併的 PR 上再補一筆修正）→ 這是 fast-forward，用正常 push 即可：
+     ```bash
+     git push origin feature/<next-name>
+     ```
+   - **剛剛 rebase 過、commit SHA 被改寫**（`main` 因前一個 PR 合併而前進）→ 遠端上的舊 commit 本地已不存在，正常 push 會被拒（non-fast-forward），這時才需要 lease：
+     ```bash
+     git push --force-with-lease origin feature/<next-name>
+     ```
+
+   不確定屬於哪一種時，先正常 push，只有被拒時才改用 lease：
+   ```bash
+   git push origin feature/<next-name> || git push --force-with-lease origin feature/<next-name>
    ```
 4. 在 GitHub 上將 PR 的 **base branch 設為 `main`**（不要設為前一個功能分支）。
 
 > [!IMPORTANT]
-> Rebase 後必須使用 `--force-with-lease` 而非 `--force`，以防意外覆蓋他人推送。
+> 只有當 rebase **改寫了歷史**時才需要 `--force-with-lease`（且永遠不要用 `--force`，以免覆蓋他人推送）；單純追加 commit 請用正常 `git push`。判斷準則：**`git push` 被拒絕（non-fast-forward）才需要 force。**
 
 ### GitHub 儲存庫設定要求 (Repository Settings)
 
