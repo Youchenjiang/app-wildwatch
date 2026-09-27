@@ -162,7 +162,8 @@ body {
 
 #hud .hud-chart-legend {
     display: flex;
-    gap: 8px;
+    flex-wrap: wrap;
+    gap: 2px 8px;
     font-size: 9px;
     color: #7a9485;
     margin-bottom: 2px;
@@ -172,6 +173,9 @@ body {
     display: inline-flex;
     align-items: center;
     gap: 3px;
+    /* Wrap between keys, never inside one: the chart box is 180px wide and a
+       label broken mid-word reads as three separate keys. */
+    white-space: nowrap;
 }
 
 #hud .hud-chart-legend .key i {
@@ -188,6 +192,56 @@ body {
     background: rgba(15, 24, 18, 0.5);
     border: 1px solid rgba(120, 160, 130, 0.12);
     border-radius: 5px;
+}
+
+#hud .hud-stat {
+    margin-bottom: 5px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(130, 170, 140, 0.16);
+    font-size: 9.5px;
+    color: #8ba595;
+    font-variant-numeric: tabular-nums;
+}
+
+#hud .hud-stat b {
+    color: #d9c07a;
+    font-weight: 600;
+}
+
+/* Chart view switch: the population chart and the lineage chart share one box. */
+#hud .hud-chart-tabs {
+    display: flex;
+    justify-content: flex-end;
+    gap: 3px;
+    margin-bottom: 3px;
+}
+
+#hud .hud-chart-tabs button {
+    padding: 1px 6px;
+    border: 1px solid rgba(130, 170, 140, 0.25);
+    border-radius: 3px;
+    background: #0f1812;
+    color: #8faea0;
+    font-family: inherit;
+    font-size: 9px;
+    cursor: pointer;
+}
+
+#hud .hud-chart-tabs button:hover {
+    color: #c0ded0;
+    background: #142219;
+}
+
+#hud .hud-chart-tabs button.on {
+    border-color: rgba(130, 170, 140, 0.5);
+    background: #1d3324;
+    color: #e4f2ea;
+}
+
+#hud .hud-chart-legend b {
+    color: #cfe3d6;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
 }
 
 #hud .hud-help {
@@ -383,8 +437,11 @@ body {
 
 #inspector .insp-mem {
     margin-top: 2px;
-    max-height: 120px;
+    max-height: 96px;
     overflow-y: auto;
+    /* Reserve the scrollbar's width, or it sits on top of the right-most
+       column and clips the values. */
+    scrollbar-gutter: stable;
 }
 
 #inspector .insp-mem-head,
@@ -424,6 +481,45 @@ body {
     font-style: normal;
     color: #8ba595;
     text-align: right;
+}
+
+#inspector .insp-meal-sum {
+    float: right;
+    font-weight: 400;
+    font-size: 9px;
+    color: #6f8a7a;
+}
+
+#inspector .insp-meals {
+    max-height: 72px;
+}
+
+/* Meal source badge: what kind of food this bite was. */
+#inspector .insp-mem-row i.meal-src {
+    font-weight: 700;
+}
+
+#inspector .meal-src.plant {
+    color: #8fdc6f;
+}
+
+#inspector .meal-src.prey {
+    color: #ff7b6b;
+}
+
+#inspector .meal-src.carrion {
+    color: #c9a86a;
+}
+
+/* Kin feeding: a corpse that belonged to the eater's own lineage. */
+#inspector .insp-mem-row.kin {
+    background: rgba(201, 168, 106, 0.14);
+    border-radius: 3px;
+}
+
+#inspector .insp-mem-row.kin .meal-src,
+#inspector .insp-meal-sum b.meal-kin {
+    color: #e0b671;
 }
 
 /* ------------------------------------------------------- Game-over veil */

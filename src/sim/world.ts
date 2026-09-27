@@ -5,6 +5,8 @@ import { SpatialGrid } from "./spatial-grid";
 import { SPECIES } from "./species";
 import type { SpeciesKind, SpeciesParams, Vec2 } from "./types";
 import { createMemory, type Memory } from "./memory";
+import { createMealLog } from "./meals";
+import { createLineage } from "./lineage";
 import { LifeGrid } from "./learning";
 import { overlaySpecies, overlayPlants } from "./era";
 
@@ -29,6 +31,11 @@ export interface Carrion {
     y: number;
     energy: number;
     alive: boolean;
+    /** The animal this body used to be, so its lineage stays knowable. */
+    fromId: number;
+    /** That animal's generation, so a scavenged meal can report how deep into
+     * the lineage the body sat — the same figure a hunted kill reports. */
+    fromGeneration: number;
 }
 
 /** Per-turn population statistics — the raw material for evolution charts. */
@@ -46,6 +53,25 @@ export interface TurnRecord {
     maxFitness: Record<SpeciesKind, number>;
     /** Alive plants at snapshot time — the resource baseline for charts. */
     plantCount: number;
+    /** Mean and deepest recorded ancestry among the living, in generations
+     * since the founders. How far back the population's forebears run. */
+    livingMeanDepth: number;
+    livingMaxDepth: number;
+    /** Share of living animals with at least one living ancestor (any depth up
+     * to the cap), and the mean generations up to it over those that have one.
+     * A high share means the population is still one family rather than
+     * separate lines, which is what lineage thinning would erode. */
+    kinDensity: number;
+    meanNearestKin: number;
+    /** Cumulative corpses eaten by carnivores, and how many of those were
+     * blood kin of the eater. Cumulative, so the pair yields a lifetime rate
+     * rather than a session one. */
+    carrionMeals: number;
+    kinMeals: number;
+    /** That kin total split by direction: a forebear eaten vs an offspring
+     * eaten. Kept apart because a run shows a very lopsided split. */
+    kinAncestorMeals: number;
+    kinDescendantMeals: number;
 }
 
 export interface WorldConfig {
@@ -84,6 +110,8 @@ export interface WorldConfig {
     lifeGridCap?: number;
     /** Energy a corpse loses per tick as it decays (default 0.05). */
     carrionDecayPerTick?: number;
+    /** Meals kept per entity for the observer's inspector (default 24). */
+    mealLogCapacity?: number;
     /** Scenario era: redisot the biome palette and species tuning per era. */
     era?: import("./era").EraConfig;
 }
@@ -155,6 +183,14 @@ export class World {
     private nextId = 1;
     private births: Record<SpeciesKind, number> = EMPTY_COUNTS();
     private deaths: Record<SpeciesKind, number> = EMPTY_COUNTS();
+    /** Ancestry of every entity ever spawned, so kinship outlives the dead. */
+    private readonly lineage = createLineage();
+    private carrionMeals = 0;
+    private kinMeals = 0;
+    /** Split of `kinMeals` by direction, so the observer can see which way
+     * kinship actually shows up in a run. */
+    private kinAncestorMeals = 0;
+    private kinDescendantMeals = 0;
     /** Fractional regrow carry-over so seasonal rates stay smooth. */
     private plantRegrowAccum = 0;
     /** Set once either species has died out; the run is over (rules forbid re-seeding). */
@@ -252,13 +288,22 @@ export class World {
             this.nextId++,
             childEnergy ?? species.reproduceEnergy * 0.5,
             memory ?? createMemory(this.config.memoryCapacity ?? 64),
+            createMealLog(this.config.mealLogCapacity),
         );
         entity.generation = generation;
         if (secondParent && parent) {
             entity.parentIds = [parent.id, secondParent.id];
         } else if (parent) {
-            entity.parentIds = [parent.id, parent.parentIds ? parent.parentIds[0] : parent.id];
+            // An asexual clone has one parent, recorded twice. Slot 1 used to
+            // hold the grandparent instead, which made it mean a second parent
+            // for a mated spawn and a grandparent for a clone — so no reader
+            // could tell how far up an ancestor actually sat. Ancestry is a
+            // walk now (src/sim/lineage.ts), so the slot can just say "parent".
+            entity.parentIds = [parent.id, parent.id];
         }
+        // Record the link before the entity can ever die: the population keeps
+        // only the living, so a chain must survive its own ancestors.
+        this.lineage.add(entity.id, entity.parentIds);
         this.entities.push(entity);
         return entity;
     }
@@ -583,62 +628,120 @@ export class World {
     // Eating / reproduction / death
     // ---------------------------------------------------------------------
 
-    private tryEat(e: Entity, inputs: number[], steer: number): void {
-        const s = e.species;
-        if (s.kind === "herbivore") {
-            const found = this.nearest(
-                this.queryPlants(e.pos, s.eatRadius),
-                (p) => p.alive,
-                (p) => p,
-                e.pos,
-            );
-            if (found) {
-                found.item.alive = false;
-                e.energy += found.item.energy;
-                e.fitness += found.item.energy;
-                e.foodEaten++;
-                e.memory.record(inputs, steer, found.item.energy, e.age);
-            }
-            return;
-        }
+    private tryGraze(entity: Entity, inputs: number[], steer: number): void {
+        const species = entity.species;
         const found = this.nearest(
-            this.queryEntities(e.pos, s.eatRadius),
-            (p) => p.alive && p.species.kind === "herbivore",
-            (p) => p.pos,
-            e.pos,
+            this.queryPlants(entity.pos, species.eatRadius),
+            (plant) => plant.alive,
+            (plant) => plant,
+            entity.pos,
         );
         if (found) {
-            // Type-III functional response with a hard prey refuge: when
-            // prey are rare, hunts almost always fail, so predators starve
-            // back before they can finish the prey off. When prey are
-            // abundant, hunts saturate and predators can boom.
-            const preyDensity =
-                this.populationOf("herbivore") / (this.config.width * this.config.height);
-            const scarcity = Math.min(1, preyDensity / PREY_REFUGE_DENSITY);
-            const factor = scarcity * scarcity * scarcity * SATURATION_BONUS + REFUGE_FLOOR;
-            if (this.rng() < CATCH_CHANCE * factor) {
-                const meat = found.item.energy;
-                this.kill(found.item, "preyed");
-                const gained = Math.min(meat * 0.6, s.maxEnergy * 0.5) + s.foodEnergy;
-                e.energy += gained;
-                e.fitness += gained;
-                e.foodEaten++;
-                e.memory.record(inputs, steer, gained, e.age);
-            }
+            found.item.alive = false;
+            entity.energy += found.item.energy;
+            entity.fitness += found.item.energy;
+            entity.foodEaten++;
+            entity.memory.record(inputs, steer, found.item.energy, entity.age);
+            entity.meals.add({ source: "plant", energy: found.item.energy, age: entity.age });
         }
+    }
+
+    private tryHunt(entity: Entity, inputs: number[], steer: number): void {
+        const species = entity.species;
+        const found = this.nearest(
+            this.queryEntities(entity.pos, species.eatRadius),
+            (target) => target.alive && target.species.kind === "herbivore",
+            (target) => target.pos,
+            entity.pos,
+        );
+        if (!found) return;
+
+        // Type-III functional response with a hard prey refuge: when
+        // prey are rare, hunts almost always fail, so predators starve
+        // back before they can finish the prey off. When prey are
+        // abundant, hunts saturate and predators can boom.
+        const preyDensity =
+            this.populationOf("herbivore") / (this.config.width * this.config.height);
+        const scarcity = Math.min(1, preyDensity / PREY_REFUGE_DENSITY);
+        const factor = scarcity * scarcity * scarcity * SATURATION_BONUS + REFUGE_FLOOR;
+        if (this.rng() < CATCH_CHANCE * factor) {
+            const meat = found.item.energy;
+            this.kill(found.item, "preyed");
+            const gained = Math.min(meat * 0.6, species.maxEnergy * 0.5) + species.foodEnergy;
+            entity.energy += gained;
+            entity.fitness += gained;
+            entity.foodEaten++;
+            entity.memory.record(inputs, steer, gained, entity.age);
+            entity.meals.add({
+                source: "prey",
+                energy: gained,
+                age: entity.age,
+                victimId: found.item.id,
+                victimGeneration: found.item.generation,
+            });
+        }
+    }
+
+    private tryScavenge(entity: Entity, inputs: number[], steer: number): void {
+        const species = entity.species;
         // Scavenging: carrion is free energy with no hunt risk (rule 6).
         const corpses: Carrion[] = [];
-        this.carrionGrid.query(e.pos.x, e.pos.y, s.eatRadius, corpses);
-        for (const c of corpses) {
-            if (!c.alive) continue;
-            const gained = c.energy;
-            c.alive = false;
-            e.energy = Math.min(s.maxEnergy, e.energy + gained);
-            e.fitness += gained;
-            e.foodEaten++;
-            e.memory.record(inputs, steer, gained, e.age);
+        this.carrionGrid.query(entity.pos.x, entity.pos.y, species.eatRadius, corpses);
+        for (const corpse of corpses) {
+            if (!corpse.alive) continue;
+            const gained = corpse.energy;
+            corpse.alive = false;
+            entity.energy = Math.min(species.maxEnergy, entity.energy + gained);
+            entity.fitness += gained;
+            entity.foodEaten++;
+            // Kin can only be met here, not in the hunt above: offspring
+            // always inherit their parent's species, and a carnivore only
+            // ever hunts herbivores. So a predator's relatives are
+            // carnivores, which reach it as carrion and never as prey.
+            //
+            // Both directions are asked for deliberately. A parent that
+            // dies leaves a body its offspring may still be standing next
+            // to; an offspring that dies has usually wandered off first.
+            // Checking only one way quietly reports zero forever.
+            const kin = this.lineage.kinTo(entity.id, corpse.fromId);
+            entity.memory.record(inputs, steer, gained, entity.age);
+            const meal = {
+                source: "carrion" as const,
+                energy: gained,
+                age: entity.age,
+                victimId: corpse.fromId,
+                victimGeneration: corpse.fromGeneration,
+            };
+            entity.meals.add(
+                kin === null
+                    ? meal
+                    : {
+                          ...meal,
+                          kin: true,
+                          kinRelation: kin.side,
+                          kinGeneration: kin.generations,
+                      },
+            );
+            this.carrionMeals++;
+            if (kin !== null) {
+                this.kinMeals++;
+                if (kin.side === "ancestor") {
+                    this.kinAncestorMeals++;
+                } else {
+                    this.kinDescendantMeals++;
+                }
+            }
             break;
         }
+    }
+
+    private tryEat(entity: Entity, inputs: number[], steer: number): void {
+        if (entity.species.kind === "herbivore") {
+            this.tryGraze(entity, inputs, steer);
+            return;
+        }
+        this.tryHunt(entity, inputs, steer);
+        this.tryScavenge(entity, inputs, steer);
     }
 
     private reproduce(e: Entity): void {
@@ -710,6 +813,8 @@ export class World {
                 y: e.pos.y,
                 energy: e.energy,
                 alive: true,
+                fromId: e.id,
+                fromGeneration: e.generation,
             });
         }
     }
@@ -737,7 +842,50 @@ export class World {
         return acc / k;
     }
 
+    private recordSpeciesMetrics(record: TurnRecord): void {
+        for (const kind of KINDS) {
+            const pop = this.entities.filter((entity) => entity.alive && entity.species.kind === kind);
+            const count = pop.length;
+            record.populations[kind] = count;
+            record.avgEnergy[kind] = count
+                ? pop.reduce((sum, entity) => sum + entity.energy, 0) / count
+                : 0;
+            record.avgGeneration[kind] = count
+                ? pop.reduce((sum, entity) => sum + entity.generation, 0) / count
+                : 0;
+            record.geneDiversity[kind] = this.geneDiversity(kind);
+            record.avgFitness[kind] = count
+                ? pop.reduce((sum, entity) => sum + entity.fitness, 0) / count
+                : 0;
+            record.maxFitness[kind] = count
+                ? Math.max(...pop.map((entity) => entity.fitness))
+                : 0;
+        }
+    }
+
+    private recordLivingAncestry(record: TurnRecord, living: readonly Entity[]): void {
+        const livingIds = new Set(living.map((entity) => entity.id));
+        let depthSum = 0;
+        let withKin = 0;
+        let kinGapSum = 0;
+        for (const entity of living) {
+            depthSum += entity.generation;
+            if (entity.generation > record.livingMaxDepth) {
+                record.livingMaxDepth = entity.generation;
+            }
+            const gap = this.lineage.nearestLivingAncestor(entity.id, livingIds);
+            if (gap !== null) {
+                withKin++;
+                kinGapSum += gap;
+            }
+        }
+        record.livingMeanDepth = living.length ? depthSum / living.length : 0;
+        record.kinDensity = living.length ? withKin / living.length : 0;
+        record.meanNearestKin = withKin ? kinGapSum / withKin : 0;
+    }
+
     private recordSnapshot(): void {
+        const living = this.entities.filter((entity) => entity.alive);
         const record: TurnRecord = {
             turn: this.turn,
             tick: this.tick,
@@ -749,26 +897,19 @@ export class World {
             geneDiversity: EMPTY_COUNTS(),
             avgFitness: EMPTY_COUNTS(),
             maxFitness: EMPTY_COUNTS(),
-            plantCount: 0,
+            plantCount: this.plants.filter((plant) => plant.alive).length,
+            livingMeanDepth: 0,
+            livingMaxDepth: 0,
+            kinDensity: 0,
+            meanNearestKin: 0,
+            carrionMeals: this.carrionMeals,
+            kinMeals: this.kinMeals,
+            kinAncestorMeals: this.kinAncestorMeals,
+            kinDescendantMeals: this.kinDescendantMeals,
         };
-        for (const kind of KINDS) {
-            const pop = this.entities.filter((e) => e.alive && e.species.kind === kind);
-            record.populations[kind] = pop.length;
-            record.avgEnergy[kind] = pop.length
-                ? pop.reduce((sum, e) => sum + e.energy, 0) / pop.length
-                : 0;
-            record.avgGeneration[kind] = pop.length
-                ? pop.reduce((sum, e) => sum + e.generation, 0) / pop.length
-                : 0;
-            record.geneDiversity[kind] = this.geneDiversity(kind);
-            record.avgFitness[kind] = pop.length
-                ? pop.reduce((sum, e) => sum + e.fitness, 0) / pop.length
-                : 0;
-            record.maxFitness[kind] = pop.length
-                ? Math.max(...pop.map((e) => e.fitness))
-                : 0;
-        }
-        record.plantCount = this.plants.filter((p) => p.alive).length;
+        this.recordSpeciesMetrics(record);
+        this.recordLivingAncestry(record, living);
+
         this.records.push(record);
         this.turn++;
         this.lifeGrid.decay(
@@ -790,6 +931,31 @@ export class World {
     /** The species whose extinction ended the run, or null while it continues. */
     get gameOver(): SpeciesKind | null {
         return this.gameOverBy;
+    }
+
+    /** Lifetime count of corpses eaten by carnivores. */
+    get carrionMealsEaten(): number {
+        return this.carrionMeals;
+    }
+
+    /** Lifetime count of those corpses that were blood kin of the eater. */
+    get kinMealsEaten(): number {
+        return this.kinMeals;
+    }
+
+    /** Kin meals where the eater ate a forebear (usually its own parent). */
+    get kinAncestorMealsEaten(): number {
+        return this.kinAncestorMeals;
+    }
+
+    /** Kin meals where the eater ate one of its own offspring. */
+    get kinDescendantMealsEaten(): number {
+        return this.kinDescendantMeals;
+    }
+
+    /** How many entities have recorded ancestry (groundwork for a pedigree). */
+    get lineageSize(): number {
+        return this.lineage.size();
     }
 
     /**
