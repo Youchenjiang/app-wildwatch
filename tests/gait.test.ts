@@ -3,11 +3,11 @@ import { GAIT_HOP, GAIT_REFERENCE_TRAVEL, GAIT_SQUASH, gaitPose, nextGait } from
 
 describe("animal gait", () => {
     it("holds a clean, uniform pose when standing still", () => {
-        const p = gaitPose(1, 0, 1);
-        expect(p.sy).toBeCloseTo(1, 10);
-        expect(p.sx).toBeCloseTo(1, 10);
-        expect(p.sz).toBeCloseTo(1, 10);
-        expect(p.lift).toBe(0);
+        const pose = gaitPose(1, 0, 1);
+        expect(pose.sy).toBeCloseTo(1, 10);
+        expect(pose.sx).toBeCloseTo(1, 10);
+        expect(pose.sz).toBeCloseTo(1, 10);
+        expect(pose.lift).toBe(0);
     });
 
     it("stretches tall when airborne, squashes wide on the landing", () => {
@@ -25,18 +25,18 @@ describe("animal gait", () => {
 
     it("deforms rather than resizes: volume is preserved exactly", () => {
         for (const wave of [-1, -0.5, 0, 0.5, 1]) {
-            const p = gaitPose(1, 1, wave);
-            expect(p.sx * p.sy * p.sz).toBeCloseTo(1, 12);
+            const pose = gaitPose(1, 1, wave);
+            expect(pose.sx * pose.sy * pose.sz).toBeCloseTo(1, 12);
         }
     });
 
     it("keeps the effect subtle relative to the body size", () => {
         const base = 2;
         for (const wave of [-1, 1]) {
-            const p = gaitPose(base, 1, wave);
-            expect(Math.abs(p.sy / base - 1)).toBeLessThanOrEqual(GAIT_SQUASH + 1e-9);
-            expect(p.lift).toBeGreaterThanOrEqual(0);
-            expect(p.lift).toBeLessThanOrEqual(base * GAIT_HOP + 1e-9);
+            const pose = gaitPose(base, 1, wave);
+            expect(Math.abs(pose.sy / base - 1)).toBeLessThanOrEqual(GAIT_SQUASH + 1e-9);
+            expect(pose.lift).toBeGreaterThanOrEqual(0);
+            expect(pose.lift).toBeLessThanOrEqual(base * GAIT_HOP + 1e-9);
         }
     });
 

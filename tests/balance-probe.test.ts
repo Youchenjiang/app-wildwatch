@@ -85,10 +85,10 @@ describe("era sweep", () => {
         const results = ERAS.map((era) => ({ era, ticks: runEra(era) }));
         console.log(
             "era ranking:",
-            results.map((r) => `${r.era.name}:${r.ticks}`).join("  "),
+            results.map((resultItem) => `${resultItem.era.name}:${resultItem.ticks}`).join("  "),
         );
-        for (const r of results) {
-            expect(r.ticks, `${r.era.name} seeding went extinct early`).toBeGreaterThanOrEqual(TARGET_TICKS);
+        for (const res of results) {
+            expect(res.ticks, `${res.era.name} seeding went extinct early`).toBeGreaterThanOrEqual(TARGET_TICKS);
         }
     }, 240000);
 });
@@ -96,16 +96,16 @@ describe("era sweep", () => {
 describe("seeding sweep", () => {
     it("finds a seeding that sustains both species", () => {
         const results: Array<{ label: string; ticks: number }> = [];
-        for (const s of SEEDINGS) {
-            results.push({ label: s.label, ticks: runSeeding(s.label, s.overrides) });
+        for (const candidate of SEEDINGS) {
+            results.push({ label: candidate.label, ticks: runSeeding(candidate.label, candidate.overrides) });
         }
-        const best = Math.max(...results.map((r) => r.ticks));
+        const best = Math.max(...results.map((entry) => entry.ticks));
         console.log(
             "ranking:",
             results
                 .slice()
-                .sort((a, b) => b.ticks - a.ticks)
-                .map((r) => `${r.label}:${r.ticks}`)
+                .sort((first, second) => second.ticks - first.ticks)
+                .map((entry) => `${entry.label}:${entry.ticks}`)
                 .join("  "),
         );
         expect(best).toBeGreaterThanOrEqual(TARGET_TICKS);
