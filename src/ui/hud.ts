@@ -30,17 +30,120 @@ function seriesPoints(
     if (recent.length === 0) return "";
     let max = fixedMax ?? 1;
     if (fixedMax === undefined) {
-        for (const r of recent) max = Math.max(max, pick(r));
+        for (const record of recent) max = Math.max(max, pick(record));
     }
     const step = CHART_WIDTH / (CHART_SPAN - 1);
     const base = recent.length < CHART_SPAN ? CHART_SPAN - recent.length : 0;
     return recent
-        .map((r, i) => {
-            const x = (base + i) * step;
-            const y = CHART_HEIGHT - (pick(r) / max) * (CHART_HEIGHT - 4) - 2;
+        .map((record, index) => {
+            const x = (base + index) * step;
+            const y = CHART_HEIGHT - (pick(record) / max) * (CHART_HEIGHT - 4) - 2;
             return `${x.toFixed(1)},${y.toFixed(1)}`;
         })
         .join(" ");
+}
+interface HudCounts {
+    turn: number;
+    tick: number;
+    herb: number;
+    carn: number;
+    plantCount: number;
+    abundance: number | null;
+}
+
+function resolveHudCounts(world: World, replay?: ReplayFrame): HudCounts {
+    if (replay) {
+        return {
+            turn: replay.turn,
+            tick: replay.tick,
+            herb: replay.populations.herbivore,
+            carn: replay.populations.carnivore,
+            plantCount: replay.populations.plants,
+            abundance: replay.seasonAbundance,
+        };
+    }
+    const seasonLen = world.config.plantSeasonLength ?? 0;
+    const livingPlants = world.plants.filter((plantItem) => plantItem.alive).length;
+    return {
+        turn: world.turn,
+        tick: world.tick,
+        herb: world.populationOf("herbivore"),
+        carn: world.populationOf("carnivore"),
+        plantCount: livingPlants,
+        abundance: seasonLen > 0 ? world.seasonAbundance : null,
+    };
+}
+
+function formatSeasonSuffix(abundance: number | null): string {
+    if (abundance === null) return "";
+    return ` · 季節 ${Math.round(abundance * 100)}%`;
+}
+
+function updateMetrics(
+    record: TurnRecord | undefined,
+    barHerbEl: HTMLElement,
+    barCarnEl: HTMLElement,
+    metaHerbEl: Element,
+    metaCarnEl: Element,
+): void {
+    if (!record) return;
+    barHerbEl.style.width = `${Math.min(100, record.avgEnergy.herbivore).toFixed(0)}%`;
+    barCarnEl.style.width = `${Math.min(100, record.avgEnergy.carnivore).toFixed(0)}%`;
+    metaHerbEl.textContent =
+        `均能 ${record.avgEnergy.herbivore.toFixed(0)} · 世代 ${record.avgGeneration.herbivore.toFixed(0)} · 生 ${record.births.herbivore} 死 ${record.deaths.herbivore}`;
+    metaCarnEl.textContent =
+        `均能 ${record.avgEnergy.carnivore.toFixed(0)} · 世代 ${record.avgGeneration.carnivore.toFixed(0)} · 生 ${record.births.carnivore} 死 ${record.deaths.carnivore}`;
+}
+
+function updateStateBanner(
+    world: World,
+    paused: boolean,
+    stateEl: Element,
+    overEl: HTMLElement,
+    overTitleEl: Element,
+    overSubEl: Element,
+): void {
+    const over = world.gameOver;
+    if (over !== null) {
+        const name = over === "herbivore" ? "草食" : "肉食";
+        stateEl.textContent = "訓練結束";
+        stateEl.className = "hud-state dead";
+        overEl.hidden = false;
+        overTitleEl.textContent = `${name}族群滅絕`;
+        overSubEl.innerHTML = `本次訓練於回合 ${world.turn} 結束 · 共 ${world.tick} ticks<br>按 <kbd>R</kbd> 重新投放`;
+        return;
+    }
+    overEl.hidden = true;
+    if (paused) {
+        stateEl.textContent = "已暫停";
+        stateEl.className = "hud-state paused";
+    } else {
+        stateEl.textContent = "運行中";
+        stateEl.className = "hud-state live";
+    }
+}
+
+function updateSparklines(
+    records: TurnRecord[],
+    seasonLen: number,
+    seasonDepth: number,
+    lineHerbEl: Element,
+    lineCarnEl: Element,
+    linePlantEl: Element,
+    lineSeasonEl: Element,
+): void {
+    if (records.length <= 1) return;
+    lineHerbEl.setAttribute("points", seriesPoints(records, (rec) => rec.populations.herbivore));
+    lineCarnEl.setAttribute("points", seriesPoints(records, (rec) => rec.populations.carnivore));
+    linePlantEl.setAttribute("points", seriesPoints(records, (rec) => rec.plantCount));
+    if (seasonLen > 0) {
+        lineSeasonEl.setAttribute(
+            "points",
+            seriesPoints(records, (rec) => seasonAbundanceAt(rec.tick, seasonLen, seasonDepth), 1),
+        );
+    } else {
+        lineSeasonEl.setAttribute("points", "");
+    }
 }
 
 export function createHud(container: HTMLElement): Hud {
@@ -129,69 +232,22 @@ export function createHud(container: HTMLElement): Hud {
 
     return {
         update(world: World, paused: boolean, replay?: ReplayFrame): void {
-            // While scrubbing, the live world keeps advancing; show the
-            // replayed point instead: history up to the frame's tick and the
-            // season position the frame carries.
             const records = replay
                 ? world.records.filter((recordItem) => recordItem.tick <= replay.tick)
                 : world.records;
-            const record = records.at(-1);
-            const herb = replay ? replay.populations.herbivore : world.populationOf("herbivore");
-            const carn = replay ? replay.populations.carnivore : world.populationOf("carnivore");
-            const plantCount = replay ? replay.populations.plants : world.plants.filter((plantItem) => plantItem.alive).length;
+            const counts = resolveHudCounts(world, replay);
+            const seasonSuffix = formatSeasonSuffix(counts.abundance);
+
+            turnEl.textContent = `回合 ${counts.turn} · tick ${counts.tick} · 🌱 ${counts.plantCount}${seasonSuffix}`;
+            popHerbEl.textContent = String(counts.herb);
+            popCarnEl.textContent = String(counts.carn);
+
+            updateMetrics(records.at(-1), barHerbEl, barCarnEl, metaHerbEl, metaCarnEl);
+            updateStateBanner(world, paused, stateEl, overEl, overTitleEl, overSubEl);
 
             const seasonLen = world.config.plantSeasonLength ?? 0;
             const seasonDepth = world.config.plantSeasonDepth ?? 0.5;
-            let abundance: number | null = null;
-            if (replay) {
-                abundance = replay.seasonAbundance;
-            } else if (seasonLen > 0) {
-                abundance = world.seasonAbundance;
-            }
-            const seasonSuffix = abundance === null ? "" : ` · 季節 ${Math.round(abundance * 100)}%`;
-            turnEl.textContent =
-                `回合 ${replay ? replay.turn : world.turn} · tick ${replay ? replay.tick : world.tick} · 🌱 ${plantCount}${seasonSuffix}`;
-            popHerbEl.textContent = String(herb);
-            popCarnEl.textContent = String(carn);
-
-            if (record) {
-                barHerbEl.style.width = `${Math.min(100, record.avgEnergy.herbivore).toFixed(0)}%`;
-                barCarnEl.style.width = `${Math.min(100, record.avgEnergy.carnivore).toFixed(0)}%`;
-                metaHerbEl.textContent =
-                    `均能 ${record.avgEnergy.herbivore.toFixed(0)} · 世代 ${record.avgGeneration.herbivore.toFixed(0)} · 生 ${record.births.herbivore} 死 ${record.deaths.herbivore}`;
-                metaCarnEl.textContent =
-                    `均能 ${record.avgEnergy.carnivore.toFixed(0)} · 世代 ${record.avgGeneration.carnivore.toFixed(0)} · 生 ${record.births.carnivore} 死 ${record.deaths.carnivore}`;
-            }
-
-            const over = world.gameOver;
-            if (over !== null) {
-                const name = over === "herbivore" ? "草食" : "肉食";
-                stateEl.textContent = "訓練結束";
-                stateEl.className = "hud-state dead";
-                overEl.hidden = false;
-                overTitleEl.textContent = `${name}族群滅絕`;
-                overSubEl.innerHTML = `本次訓練於回合 ${world.turn} 結束 · 共 ${world.tick} ticks<br>按 <kbd>R</kbd> 重新投放`;
-            } else {
-                stateEl.textContent = paused ? "已暫停" : "運行中";
-                stateEl.className = paused ? "hud-state paused" : "hud-state live";
-            }
-
-            if (records.length > 1) {
-                lineHerbEl.setAttribute("points", seriesPoints(records, (rec) => rec.populations.herbivore));
-                lineCarnEl.setAttribute("points", seriesPoints(records, (rec) => rec.populations.carnivore));
-                linePlantEl.setAttribute("points", seriesPoints(records, (rec) => rec.plantCount));
-                if (seasonLen > 0) {
-                    // The season curve: where in the cycle each snapshot sat
-                    // (0 = trough, 1 = peak), pinned to fill the chart. In a
-                    // replay it ends at the scrubbed tick, not the live one.
-                    lineSeasonEl.setAttribute(
-                        "points",
-                        seriesPoints(records, (rec) => seasonAbundanceAt(rec.tick, seasonLen, seasonDepth), 1),
-                    );
-                } else {
-                    lineSeasonEl.setAttribute("points", "");
-                }
-            }
+            updateSparklines(records, seasonLen, seasonDepth, lineHerbEl, lineCarnEl, linePlantEl, lineSeasonEl);
         },
     };
 }
