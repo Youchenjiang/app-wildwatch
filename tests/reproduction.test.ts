@@ -34,10 +34,10 @@ function makeConfig(
 
 /** Stack the starting animals on one cell at breeding energy. */
 function stack(world: World): void {
-    for (const e of world.entities) {
-        e.pos.x = 15;
-        e.pos.y = 15;
-        e.energy = e.species.maxEnergy;
+    for (const entity of world.entities) {
+        entity.pos.x = 15;
+        entity.pos.y = 15;
+        entity.energy = entity.species.maxEnergy;
     }
 }
 
@@ -49,10 +49,10 @@ describe("reproduction mode", () => {
 
         expect(world.asexualBirths).toBeGreaterThan(0);
         expect(world.sexualBirths).toBe(0);
-        for (const e of world.entities) {
-            if (e.parentIds === null) continue;
+        for (const entity of world.entities) {
+            if (entity.parentIds === null) continue;
             // A clone records one parent in both slots.
-            expect(e.parentIds[0]).toBe(e.parentIds[1]);
+            expect(entity.parentIds[0]).toBe(entity.parentIds[1]);
         }
     });
 
@@ -64,7 +64,7 @@ describe("reproduction mode", () => {
         expect(world.sexualBirths).toBeGreaterThan(0);
         expect(world.asexualBirths).toBe(0);
         const child = world.entities.find(
-            (e) => e.parentIds !== null && e.parentIds[0] !== e.parentIds[1],
+            (entity) => entity.parentIds !== null && entity.parentIds[0] !== entity.parentIds[1],
         );
         expect(child).toBeDefined();
     });

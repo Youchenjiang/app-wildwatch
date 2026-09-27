@@ -44,9 +44,9 @@ export class SpatialGrid<T> {
     }
 
     insert(item: T): void {
-        const p = this.position(item);
-        const cx = Math.floor(p.x / this.cellSize);
-        const cy = Math.floor(p.y / this.cellSize);
+        const pos = this.position(item);
+        const cx = Math.floor(pos.x / this.cellSize);
+        const cy = Math.floor(pos.y / this.cellSize);
         const key = this.key(cx, cy);
         let bucket = this.cells.get(key);
         if (!bucket) {
@@ -72,9 +72,9 @@ export class SpatialGrid<T> {
                 const bucket = this.cells.get(this.key(cx, cy));
                 if (!bucket) continue;
                 for (const item of bucket) {
-                    const p = this.position(item);
-                    const dx = p.x - x;
-                    const dy = p.y - y;
+                    const pos = this.position(item);
+                    const dx = pos.x - x;
+                    const dy = pos.y - y;
                     if (dx * dx + dy * dy <= r2) out.push(item);
                 }
             }

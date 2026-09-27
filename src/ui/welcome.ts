@@ -73,17 +73,21 @@ export function createWelcome(
 
     let selectedEra: EraConfig | undefined = eras[0];
     let selectedMode: ReproductionMode = REPRODUCTION_MODES[0].mode;
-    const modeDescEl = el.querySelector<HTMLElement>("#mode-desc")!;
+    const modeDescEl = el.querySelector<HTMLElement>("#mode-desc");
     const modeButtons = el.querySelectorAll<HTMLButtonElement>(".mode-card");
     const showModeDesc = (): void => {
+        if (!modeDescEl) return;
         modeDescEl.textContent =
-            REPRODUCTION_MODES.find((m) => m.mode === selectedMode)?.desc ?? "";
+            REPRODUCTION_MODES.find((modeItem) => modeItem.mode === selectedMode)?.desc ?? "";
     };
     for (const button of modeButtons) {
         button.addEventListener("click", () => {
-            selectedMode = button.dataset!.mode as ReproductionMode;
-            for (const b of modeButtons) b.classList.toggle("on", b === button);
-            showModeDesc();
+            const mode = button.dataset.mode;
+            if (mode) {
+                selectedMode = mode as ReproductionMode;
+                for (const btn of modeButtons) btn.classList.toggle("on", btn === button);
+                showModeDesc();
+            }
         });
     }
     // Seed the default as selected, the same way the era picker does.

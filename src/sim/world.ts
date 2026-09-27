@@ -236,9 +236,9 @@ export class World {
     tick = 0;
     turn = 0;
 
-    private readonly grid = new SpatialGrid<Entity>(10, (e) => e.pos);
-    private readonly plantGrid = new SpatialGrid<Plant>(10, (p) => p);
-    private readonly carrionGrid = new SpatialGrid<Carrion>(10, (c) => c);
+    private readonly grid = new SpatialGrid<Entity>(10, (entity) => entity.pos);
+    private readonly plantGrid = new SpatialGrid<Plant>(10, (plant) => plant);
+    private readonly carrionGrid = new SpatialGrid<Carrion>(10, (carrion) => carrion);
     readonly lifeGrid: LifeGrid;
     private nextId = 1;
     private births: Record<SpeciesKind, number> = EMPTY_COUNTS();
@@ -355,8 +355,8 @@ export class World {
         const near: Plant[] = [];
         this.plantGrid.query(spot.x, spot.y, radius, near);
         let count = 0;
-        for (const p of near) {
-            if (p.alive) count++;
+        for (const plant of near) {
+            if (plant.alive) count++;
         }
         return count;
     }

@@ -242,10 +242,10 @@ const FEATURE_TINT = new THREE.Color().setRGB(0.88, 0.84, 0.8);
 function tinted(geometry: THREE.BufferGeometry, color: THREE.Color): THREE.BufferGeometry {
     const count = geometry.attributes.position.count;
     const colors = new Float32Array(count * 3);
-    for (let i = 0; i < count; i++) {
-        colors[i * 3] = color.r;
-        colors[i * 3 + 1] = color.g;
-        colors[i * 3 + 2] = color.b;
+    for (let idx = 0; idx < count; idx++) {
+        colors[idx * 3] = color.r;
+        colors[idx * 3 + 1] = color.g;
+        colors[idx * 3 + 2] = color.b;
     }
     geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
     return geometry;
@@ -296,8 +296,8 @@ export function buildAnimalGeometry(shape: AnimalShape): THREE.BufferGeometry {
             ear.rotateZ(side * tilt); // lean outwards, so a pair reads as ears
             // Stand it on the body's surface: half of the cone rises above its
             // own base point, and leaning tilts that rise back by cos(tilt).
-            const y = surfaceHeight(shape, side * spread, back) + (height / 2) * Math.cos(tilt);
-            ear.translate(side * spread, y, back);
+            const surfaceY = surfaceHeight(shape, side * spread, back) + (height / 2) * Math.cos(tilt);
+            ear.translate(side * spread, surfaceY, back);
             parts.push(tinted(ear, FEATURE_TINT));
         }
     }

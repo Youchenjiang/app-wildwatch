@@ -730,7 +730,7 @@ body {
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
-    color: #8ba595;
+    color: #d9e7dc;
     font-family: inherit;
     font-size: 12px;
     cursor: pointer;
@@ -745,13 +745,13 @@ body {
 #welcome .mode-card.on {
     background: rgba(143, 217, 162, 0.18);
     border-color: #8fd9a2;
-    color: #b9e4c0;
+    color: #f2faf4;
     box-shadow: 0 0 0 1px rgba(143, 217, 162, 0.5);
 }
 
 #welcome .mode-desc {
     font-size: 10px;
-    color: #5f7a6a;
+    color: #a3c2af;
     min-height: 14px;
 }
 

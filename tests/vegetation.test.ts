@@ -18,13 +18,13 @@ function uniformWorld() {
 /** Where grass keeps appearing, counted per cell over a window of ticks. */
 function productionField(world: World, ticks: number): number[] {
     const field = new Array<number>(CELLS).fill(0);
-    const seen = new Set<number>(world.plants.map((p) => p.id));
-    for (let i = 0; i < ticks; i++) {
+    const seen = new Set<number>(world.plants.map((plant) => plant.id));
+    for (let step = 0; step < ticks; step++) {
         world.tickStep();
-        for (const p of world.plants) {
-            if (seen.has(p.id)) continue;
-            seen.add(p.id);
-            field[Math.floor(p.y / CELL) * GRID + Math.floor(p.x / CELL)]++;
+        for (const plant of world.plants) {
+            if (seen.has(plant.id)) continue;
+            seen.add(plant.id);
+            field[Math.floor(plant.y / CELL) * GRID + Math.floor(plant.x / CELL)]++;
         }
     }
     return field;
@@ -36,10 +36,10 @@ function productionField(world: World, ticks: number): number[] {
  * it goes. This is the number that says whether grass has geography at all.
  */
 function dispersion(field: readonly number[]): number {
-    const total = field.reduce((a, b) => a + b, 0);
+    const total = field.reduce((sum, val) => sum + val, 0);
     const mean = total / field.length;
     if (mean === 0) return 0;
-    const variance = field.reduce((acc, c) => acc + (c - mean) ** 2, 0) / field.length;
+    const variance = field.reduce((acc, val) => acc + (val - mean) ** 2, 0) / field.length;
     return variance / mean;
 }
 
@@ -54,19 +54,19 @@ function dispersion(field: readonly number[]): number {
 function persistence(world: World, windows: number, ticksPerWindow: number): number {
     const ratios: number[] = [];
     let prev: number[] | null = null;
-    for (let w = 0; w < windows; w++) {
+    for (let windowIndex = 0; windowIndex < windows; windowIndex++) {
         const field = productionField(world, ticksPerWindow);
-        const total = field.reduce((a, b) => a + b, 0);
+        const total = field.reduce((sum, val) => sum + val, 0);
         if (prev !== null && total > 0) {
             const mean = total / field.length;
-            const ranked = prev.map((v, i) => [v, i] as const).sort((a, b) => b[0] - a[0]);
-            const best = ranked.slice(0, Math.round(field.length * 0.25)).map(([, i]) => i);
-            const good = best.reduce((a, i) => a + field[i], 0);
+            const ranked = prev.map((val, idx) => [val, idx] as const).sort((itemA, itemB) => itemB[0] - itemA[0]);
+            const best = ranked.slice(0, Math.round(field.length * 0.25)).map(([, idx]) => idx);
+            const good = best.reduce((sum, idx) => sum + field[idx], 0);
             ratios.push(good / best.length / mean);
         }
         prev = field;
     }
-    return ratios.reduce((a, b) => a + b, 0) / ratios.length;
+    return ratios.reduce((sum, ratio) => sum + ratio, 0) / ratios.length;
 }
 
 describe("vegetation geography", () => {
@@ -80,11 +80,11 @@ describe("vegetation geography", () => {
             // true if the dispersal model is disturbed.
             const uniform = new World(
                 (() => {
-                    const c = makeSeeding(20260907);
-                    c.plantSpread = 0;
-                    c.plantSpacing = 0;
-                    c.plantColoniseChance = 0;
-                    return c;
+                    const uniformConfig = makeSeeding(20260907);
+                    uniformConfig.plantSpread = 0;
+                    uniformConfig.plantSpacing = 0;
+                    uniformConfig.plantColoniseChance = 0;
+                    return uniformConfig;
                 })(),
             );
             const uniformDispersion = dispersion(productionField(uniform, 6000));
@@ -102,7 +102,7 @@ describe("vegetation geography", () => {
         "keeps a good patch good, which is what makes ranging worth it",
         () => {
             const uniform = uniformWorld();
-            for (let i = 0; i < 3000; i++) uniform.tickStep();
+            for (let step = 0; step < 3000; step++) uniform.tickStep();
             // Independent positions: being in last window's best ground must
             // predict nothing.
             const flat = persistence(uniform, 6, 800);
@@ -110,7 +110,7 @@ describe("vegetation geography", () => {
             expect(flat).toBeLessThan(1.15);
 
             const dispersed = new World(makeSeeding(20260907));
-            for (let i = 0; i < 3000; i++) dispersed.tickStep();
+            for (let step = 0; step < 3000; step++) dispersed.tickStep();
             const gradient = persistence(dispersed, 6, 800);
             expect(gradient, "a good patch no longer stays good").toBeGreaterThan(1.2);
         },
@@ -124,16 +124,16 @@ describe("vegetation geography", () => {
         // even sprinkle this replaced. So the split is pinned around what the
         // model measures: roughly three quarters local, the rest travelling.
         const config = makeSeeding(20260907);
-        const spread = config.plantSpread!;
+        const spread = config.plantSpread ?? 4;
         const world = new World(config);
-        for (let i = 0; i < 3000; i++) world.tickStep();
+        for (let step = 0; step < 3000; step++) world.tickStep();
 
-        const known = new Set<number>(world.plants.map((p) => p.id));
+        const known = new Set<number>(world.plants.map((plant) => plant.id));
         let local = 0;
         let travelled = 0;
-        for (let i = 0; i < 3000; i++) {
+        for (let step = 0; step < 3000; step++) {
             world.tickStep();
-            const newborns = world.plants.filter((p) => !known.has(p.id));
+            const newborns = world.plants.filter((plant) => !known.has(plant.id));
             for (const baby of newborns) {
                 known.add(baby.id);
                 // Nearest other plant in the whole population, siblings from the
@@ -156,19 +156,19 @@ describe("vegetation geography", () => {
     it("holds its ceiling and stays deterministic", () => {
         const config = makeSeeding(20260907);
         const cap = config.maxPlants;
-        const a = new World(config);
-        const b = new World(config);
-        for (let i = 0; i < 3000; i++) {
-            a.tickStep();
-            b.tickStep();
-            expect(a.plants.length).toBeLessThanOrEqual(cap);
+        const worldA = new World(config);
+        const worldB = new World(config);
+        for (let step = 0; step < 3000; step++) {
+            worldA.tickStep();
+            worldB.tickStep();
+            expect(worldA.plants.length).toBeLessThanOrEqual(cap);
         }
         // Dispersal draws from the seeded RNG, so two runs of the same seeding
         // must place the grass identically, down to the coordinates.
-        expect(a.plants.length).toBe(b.plants.length);
-        for (let i = 0; i < a.plants.length; i++) {
-            expect(a.plants[i].x).toBe(b.plants[i].x);
-            expect(a.plants[i].y).toBe(b.plants[i].y);
+        expect(worldA.plants.length).toBe(worldB.plants.length);
+        for (let idx = 0; idx < worldA.plants.length; idx++) {
+            expect(worldA.plants[idx].x).toBe(worldB.plants[idx].x);
+            expect(worldA.plants[idx].y).toBe(worldB.plants[idx].y);
         }
     }, 300000);
 });
