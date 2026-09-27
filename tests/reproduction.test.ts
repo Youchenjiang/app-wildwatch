@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_BRAIN_SPEC, World, type ReproductionMode, type WorldConfig } from "../src/sim/world";
+import { World, type ReproductionMode, type WorldConfig } from "../src/sim/world";
 
 /** Two herbivores and nothing else: every birth is attributable to them. */
 function makeConfig(
