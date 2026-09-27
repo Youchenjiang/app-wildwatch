@@ -99,11 +99,19 @@ export function createHud(container: HTMLElement): Hud {
     `;
     container.appendChild(overEl);
 
-    const q = <T extends Element>(sel: string): T => el.querySelector<T>(sel)!;
+    const q = <T extends Element>(sel: string): T => {
+        const found = el.querySelector<T>(sel);
+        if (!found) throw new Error(`Missing HUD element: ${sel}`);
+        return found;
+    };
     // The game-over veil is a sibling of the HUD, so its own children are
     // queried within overEl — querying the HUD would return null and crash
     // the frame loop the moment a run ends.
-    const qOver = <T extends Element>(sel: string): T => overEl.querySelector<T>(sel)!;
+    const qOver = <T extends Element>(sel: string): T => {
+        const found = overEl.querySelector<T>(sel);
+        if (!found) throw new Error(`Missing HUD element: ${sel}`);
+        return found;
+    };
     const stateEl = q("#hud-state");
     const turnEl = q("#hud-turn");
     const popHerbEl = q("#pop-herb");
@@ -140,9 +148,9 @@ export function createHud(container: HTMLElement): Hud {
             } else if (seasonLen > 0) {
                 abundance = world.seasonAbundance;
             }
+            const seasonSuffix = abundance === null ? "" : ` · 季節 ${Math.round(abundance * 100)}%`;
             turnEl.textContent =
-                `回合 ${replay ? replay.turn : world.turn} · tick ${replay ? replay.tick : world.tick} · 🌱 ${plantCount}` +
-                (abundance === null ? "" : ` · 季節 ${Math.round(abundance * 100)}%`);
+                `回合 ${replay ? replay.turn : world.turn} · tick ${replay ? replay.tick : world.tick} · 🌱 ${plantCount}${seasonSuffix}`;
             popHerbEl.textContent = String(herb);
             popCarnEl.textContent = String(carn);
 
