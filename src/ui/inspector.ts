@@ -117,18 +117,18 @@ export function createInspector(container: HTMLElement): EntityInspector {
                         <div class="insp-mem-head"><span>來源</span><span>能量</span><span>世代</span><span>多久前</span></div>
                         ${meals
                             .map(
-                                (m) => `
-                        <div class="insp-mem-row${m.kin ? " kin" : ""}"${
-                            m.kin
-                                ? ` title="近親取食 · 相差 ${m.kinGeneration} 代"`
+                                (mealItem) => `
+                        <div class="insp-mem-row${mealItem.kin ? " kin" : ""}"${
+                            mealItem.kin
+                                ? ` title="近親取食 · 相差 ${mealItem.kinGeneration} 代"`
                                 : ""
                         }>
-                            <i class="meal-src ${m.source}">${
-                                m.kin ? KIN_LABEL[m.kinRelation ?? "ancestor"] : MEAL_LABEL[m.source]
+                            <i class="meal-src ${mealItem.source}">${
+                                mealItem.kin ? KIN_LABEL[mealItem.kinRelation ?? "ancestor"] : MEAL_LABEL[mealItem.source]
                             }</i>
-                            <b>+${m.energy.toFixed(0)}</b>
-                            <span>${m.victimGeneration === undefined ? "—" : `G${m.victimGeneration}`}</span>
-                            <em>${e.age - m.age}t</em>
+                            <b>+${mealItem.energy.toFixed(0)}</b>
+                            <span>${mealItem.victimGeneration === undefined ? "—" : `G${mealItem.victimGeneration}`}</span>
+                            <em>${e.age - mealItem.age}t</em>
                         </div>`,
                             )
                             .join("")}

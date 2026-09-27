@@ -873,10 +873,12 @@ export class World {
         let depthSum = 0;
         let withKin = 0;
         let kinGapSum = 0;
-        for (const e of living) {
-            depthSum += e.generation;
-            if (e.generation > record.livingMaxDepth) record.livingMaxDepth = e.generation;
-            const gap = this.lineage.nearestLivingAncestor(e.id, livingIds);
+        for (const entity of living) {
+            depthSum += entity.generation;
+            if (entity.generation > record.livingMaxDepth) {
+                record.livingMaxDepth = entity.generation;
+            }
+            const gap = this.lineage.nearestLivingAncestor(entity.id, livingIds);
             if (gap !== null) {
                 withKin++;
                 kinGapSum += gap;

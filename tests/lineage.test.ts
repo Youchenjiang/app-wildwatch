@@ -174,7 +174,10 @@ describe("kin feeding", () => {
         world["reproduce"](parent);
 
         const child = world.entities[1];
-        expect(child.parentIds![0]).toBe(parent.id);
+        expect(child.parentIds).toBeDefined();
+        if (child.parentIds) {
+            expect(child.parentIds[0]).toBe(parent.id);
+        }
 
         world["kill"](child, "test");
         const corpse = world.carrions[0];
@@ -182,7 +185,11 @@ describe("kin feeding", () => {
         corpse.y = parent.pos.y;
         world.tickStep();
 
-        const meal = parent.meals.recent(3).find((m) => m.source === "carrion")!;
+        const meal = parent.meals.recent(3).find((entry) => entry.source === "carrion");
+        expect(meal).toBeDefined();
+        if (!meal) {
+            throw new Error("Carrion meal not found");
+        }
         expect(meal.kin).toBe(true);
         expect(meal.kinGeneration).toBe(1);
         expect(meal.victimId).toBe(child.id);
@@ -201,7 +208,11 @@ describe("kin feeding", () => {
         corpse.y = eater.pos.y;
         world.tickStep();
 
-        const meal = eater.meals.recent(3).find((m) => m.source === "carrion")!;
+        const meal = eater.meals.recent(3).find((entry) => entry.source === "carrion");
+        expect(meal).toBeDefined();
+        if (!meal) {
+            throw new Error("Carrion meal not found");
+        }
         expect(meal.kin).toBeUndefined();
         expect(eater.meals.kinCount()).toBe(0);
         expect(world.kinMealsEaten).toBe(0);
@@ -224,7 +235,11 @@ describe("kin feeding", () => {
         world.tickStep();
 
         world["kill"](child, "test");
-        const kin = world.carrions.find((c) => c.alive)!;
+        const kin = world.carrions.find((corpseEntry) => corpseEntry.alive);
+        expect(kin).toBeDefined();
+        if (!kin) {
+            throw new Error("Alive kin corpse not found");
+        }
         kin.x = eater.pos.x;
         kin.y = eater.pos.y;
         world.tickStep();

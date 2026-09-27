@@ -88,8 +88,8 @@ function runEra(era: EraConfig): {
     const carn = world.populationOf("carnivore");
     console.log(
         `era ${era.name.padEnd(10)} ${status}, final h=${herb} c=${carn}, season=${era.plants.seasonLength}/${era.plants.seasonDepth}, ` +
-            `kin=${world.kinMealsEaten}/${world.carrionMealsEaten}, depth=${world.records.reduce((m, r) => Math.max(m, r.livingMaxDepth), 0)} ` +
-            `liveForebears=${(world.records.reduce((m, r) => Math.max(m, r.kinDensity), 0) * 100).toFixed(0)}%`,
+            `kin=${world.kinMealsEaten}/${world.carrionMealsEaten}, depth=${world.records.reduce((maxDepth, rec) => Math.max(maxDepth, rec.livingMaxDepth), 0)} ` +
+            `liveForebears=${(world.records.reduce((maxDensity, rec) => Math.max(maxDensity, rec.kinDensity), 0) * 100).toFixed(0)}%`,
     );
     return {
         ticks: endedAt < 0 ? MAX_TICKS : endedAt,
@@ -101,8 +101,8 @@ function runEra(era: EraConfig): {
         kinDescendant: world.kinDescendantMealsEaten,
         // The deepest reading of the run, not the final one: a population that
         // crashed late would otherwise report a small value.
-        maxLivingDepth: world.records.reduce((m, r) => Math.max(m, r.livingMaxDepth), 0),
-        kinDensity: world.records.reduce((m, r) => Math.max(m, r.kinDensity), 0),
+        maxLivingDepth: world.records.reduce((maxDepth, rec) => Math.max(maxDepth, rec.livingMaxDepth), 0),
+        kinDensity: world.records.reduce((maxDensity, rec) => Math.max(maxDensity, rec.kinDensity), 0),
     };
 }
 
@@ -119,7 +119,11 @@ describe("era sweep", () => {
         // Grassland is the locked reference seeding, so its exact outcome is
         // the determinism canary: a mechanic that changes behavior must move
         // this number deliberately (and be re-validated), never by accident.
-        const grassland = results.find((r) => r.era.name === "Grassland")!;
+        const grassland = results.find((resultItem) => resultItem.era.name === "Grassland");
+        expect(grassland).toBeDefined();
+        if (!grassland) {
+            throw new Error("Grassland era missing");
+        }
         expect(grassland.herb, "grassland baseline drifted").toBe(31);
         expect(grassland.carn, "grassland baseline drifted").toBe(41);
 

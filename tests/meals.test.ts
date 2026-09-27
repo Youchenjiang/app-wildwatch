@@ -43,7 +43,7 @@ describe("meal log", () => {
         log.add({ source: "prey", energy: 30, age: 40 });
         log.add({ source: "carrion", energy: 12, age: 55 });
 
-        expect(log.recent(2).map((m) => m.source)).toEqual(["carrion", "prey"]);
+        expect(log.recent(2).map((mealEntry) => mealEntry.source)).toEqual(["carrion", "prey"]);
         expect(log.recent(2)[0].age).toBe(55);
     });
 
@@ -52,7 +52,7 @@ describe("meal log", () => {
         for (let i = 0; i < 10; i++) log.add({ source: "plant", energy: 1, age: i });
 
         expect(log.size()).toBe(3);
-        expect(log.recent(3).map((m) => m.age)).toEqual([9, 8, 7]);
+        expect(log.recent(3).map((mealEntry) => mealEntry.age)).toEqual([9, 8, 7]);
         // Totals survive eviction: the summary is a lifetime figure.
         expect(log.counts().plant).toBe(10);
     });
@@ -148,29 +148,40 @@ describe("meal recording", () => {
         const world = new World(
             makeConfig({ herbivoreCount: 40, carnivoreCount: 1, plantCount: 100, populationCap: 500 }),
         );
-        const carn = world.entities.find((e) => e.species.kind === "carnivore")!;
-        const herb = world.entities.find((e) => e.species.kind === "herbivore")!;
+        const carn = world.entities.find((entity) => entity.species.kind === "carnivore");
+        const herb = world.entities.find((entity) => entity.species.kind === "herbivore");
+        expect(carn).toBeDefined();
+        expect(herb).toBeDefined();
+        if (!carn || !herb) {
+            throw new Error("Entities not found");
+        }
         // Any of the herd may be the one caught, so give them all the same
         // generation and the assertion holds whichever victim it turns out to be.
-        for (const e of world.entities) if (e.species.kind === "herbivore") e.generation = 6;
+        for (const entity of world.entities) {
+            if (entity.species.kind === "herbivore") {
+                entity.generation = 6;
+            }
+        }
 
         let victim: Meal | undefined;
         for (let i = 0; i < 500 && !victim; i++) {
             herb.pos.x = carn.pos.x;
             herb.pos.y = carn.pos.y;
             world.tickStep();
-            victim = carn.meals.recent(1).find((m) => m.source === "prey");
+            victim = carn.meals.recent(1).find((mealEntry) => mealEntry.source === "prey");
         }
 
         expect(victim).toBeTruthy();
-        expect(victim!.victimGeneration).toBe(6);
+        if (victim) {
+            expect(victim.victimGeneration).toBe(6);
+        }
         expect(carn.meals.counts().prey).toBeGreaterThan(0);
     });
 
     it("gives every entity its own log", () => {
         const world = new World(makeConfig({ herbivoreCount: 2, plantCount: 2 }));
-        const [a, b] = world.entities;
-        a.meals.add({ source: "plant", energy: 1, age: 1 });
-        expect(b.meals.size()).toBe(0);
+        const [firstEntity, secondEntity] = world.entities;
+        firstEntity.meals.add({ source: "plant", energy: 1, age: 1 });
+        expect(secondEntity.meals.size()).toBe(0);
     });
 });

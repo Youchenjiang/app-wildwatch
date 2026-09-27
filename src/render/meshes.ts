@@ -74,9 +74,9 @@ export const CARRION_GONE_SCALE = 0.12;
  * carrion. `p` is 0..1 progress: the squash is an ease-out, so the body drops
  * fast and then settles instead of fading out linearly.
  */
-export function collapsePose(baseScale: number, p: number) {
-    const t = Math.min(1, Math.max(0, p));
-    const eased = 1 - (1 - t) * (1 - t);
+export function collapsePose(baseScale: number, progress: number) {
+    const clamped = Math.min(1, Math.max(0, progress));
+    const eased = 1 - (1 - clamped) * (1 - clamped);
     return {
         width: baseScale * (1 - (1 - COLLAPSE_WIDTH) * eased),
         height: baseScale * (1 - (1 - COLLAPSE_HEIGHT) * eased),
@@ -90,11 +90,11 @@ export function collapsePose(baseScale: number, p: number) {
  * size and then blinking out of existence.
  */
 export function carrionPose(remaining: number) {
-    const r = Math.min(1, Math.max(0, remaining));
-    const width = CARRION_GONE_SCALE + (CARRION_FRESH_SCALE - CARRION_GONE_SCALE) * r;
+    const rem = Math.min(1, Math.max(0, remaining));
+    const width = CARRION_GONE_SCALE + (CARRION_FRESH_SCALE - CARRION_GONE_SCALE) * rem;
     // Also flattens as it goes, so it reads as a corpse settling into the
     // ground rather than a ball being uniformly scaled down.
-    return { width, height: width * (0.45 + 0.55 * r) };
+    return { width, height: width * (0.45 + 0.55 * rem) };
 }
 
 /** Seconds a corpse takes to be pulled into the animal eating it. */
@@ -114,13 +114,13 @@ export const CARRION_DECAY_BUDGET = 4;
 const FEED_REMAINDER = 0.1;
 
 /**
- * Pose for a corpse being eaten. `p` is 0..1 progress. Returns the eased
+ * Pose for a corpse being eaten. `progress` is 0..1 progress. Returns the eased
  * progress — used to pull the morsel toward the eater — and the shrinking
  * size. The ease-out makes the corpse get yanked in and then vanish.
  */
-export function feedPose(fromWidth: number, fromHeight: number, p: number) {
-    const t = Math.min(1, Math.max(0, p));
-    const eased = 1 - (1 - t) * (1 - t);
+export function feedPose(fromWidth: number, fromHeight: number, progress: number) {
+    const clamped = Math.min(1, Math.max(0, progress));
+    const eased = 1 - (1 - clamped) * (1 - clamped);
     const scale = 1 - (1 - FEED_REMAINDER) * eased;
     return { width: fromWidth * scale, height: fromHeight * scale, eased };
 }
@@ -497,20 +497,20 @@ export class MeshPool {
     /** Deflate each just-dead body, then drop it once it has settled. */
     private syncCollapsing(): void {
         for (const [id, body] of this.collapsing) {
-            const p = (this.animTime - body.startTime) / DEATH_DURATION;
-            if (p >= 1) {
+            const progress = (this.animTime - body.startTime) / DEATH_DURATION;
+            if (progress >= 1) {
                 this.scene.remove(body.mesh);
                 if (body.shadow) this.scene.remove(body.shadow);
                 this.collapsing.delete(id);
                 continue;
             }
-            const pose = collapsePose(body.baseScale, p);
+            const pose = collapsePose(body.baseScale, progress);
             body.mesh.scale.set(pose.width, pose.height, pose.width);
             // The body rests on its radius, so it sinks with the squash.
             body.mesh.position.set(body.x, pose.height * 0.6, body.y);
             if (body.shadow) {
                 body.shadow.scale.setScalar(pose.width * 0.9);
-                (body.shadow.material as THREE.MeshBasicMaterial).opacity = 0.32 * (1 - p);
+                (body.shadow.material as THREE.MeshBasicMaterial).opacity = 0.32 * (1 - progress);
             }
         }
     }
@@ -654,12 +654,12 @@ export class MeshPool {
             // predator is nearest where it lay, which is the eater unless the
             // kill and a passing predator happened to coincide.
             let eaterId: number | null = null;
-            let bestD2 = Infinity;
-            for (const c of carnivores) {
-                const d2 = (c.x - spot.x) ** 2 + (c.y - spot.y) ** 2;
-                if (d2 <= bestD2) {
-                    bestD2 = d2;
-                    eaterId = c.id;
+            let bestDistSq = Infinity;
+            for (const predator of carnivores) {
+                const distSq = (predator.x - spot.x) ** 2 + (predator.y - spot.y) ** 2;
+                if (distSq <= bestDistSq) {
+                    bestDistSq = distSq;
+                    eaterId = predator.id;
                 }
             }
             this.feeding.set(id, {
@@ -682,23 +682,23 @@ export class MeshPool {
      * target is looked up live, so the morsel follows a moving predator. */
     private syncFeeding(): void {
         for (const [id, meal] of this.feeding) {
-            const p = (this.animTime - meal.startTime) / FEED_DURATION;
-            if (p >= 1) {
+            const progress = (this.animTime - meal.startTime) / FEED_DURATION;
+            if (progress >= 1) {
                 this.scene.remove(meal.mesh);
                 this.feeding.delete(id);
                 continue;
             }
-            const pose = feedPose(meal.fromWidth, meal.fromHeight, p);
+            const pose = feedPose(meal.fromWidth, meal.fromHeight, progress);
             meal.mesh.scale.set(pose.width, pose.height, pose.width);
             const eater = meal.eaterId === null ? undefined : this.npcMeshes.get(meal.eaterId);
-            const tx = eater ? eater.position.x : meal.x;
-            const tz = eater ? eater.position.z : meal.y;
-            const ty = eater ? eater.position.y : pose.height * 0.3;
+            const targetX = eater ? eater.position.x : meal.x;
+            const targetZ = eater ? eater.position.z : meal.y;
+            const targetY = eater ? eater.position.y : pose.height * 0.3;
             // Sink to the ground when there is no eater to be pulled into.
             meal.mesh.position.set(
-                meal.x + (tx - meal.x) * pose.eased,
-                pose.height * 0.3 + (ty - pose.height * 0.3) * pose.eased,
-                meal.y + (tz - meal.y) * pose.eased,
+                meal.x + (targetX - meal.x) * pose.eased,
+                pose.height * 0.3 + (targetY - pose.height * 0.3) * pose.eased,
+                meal.y + (targetZ - meal.y) * pose.eased,
             );
         }
     }

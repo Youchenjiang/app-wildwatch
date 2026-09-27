@@ -13,29 +13,29 @@ import {
 
 describe("death collapse", () => {
     it("starts at the animal's living size", () => {
-        const p = collapsePose(2, 0);
-        expect(p.width).toBeCloseTo(2, 10);
-        expect(p.height).toBeCloseTo(2, 10);
+        const pose = collapsePose(2, 0);
+        expect(pose.width).toBeCloseTo(2, 10);
+        expect(pose.height).toBeCloseTo(2, 10);
     });
 
     it("ends flattened and shrunken, but not vanished", () => {
-        const p = collapsePose(1, 1);
-        expect(p.height).toBeCloseTo(COLLAPSE_HEIGHT, 10);
-        expect(p.width).toBeCloseTo(COLLAPSE_WIDTH, 10);
+        const pose = collapsePose(1, 1);
+        expect(pose.height).toBeCloseTo(COLLAPSE_HEIGHT, 10);
+        expect(pose.width).toBeCloseTo(COLLAPSE_WIDTH, 10);
         // Flattened much harder than it shrinks, so it reads as a body
         // slumping into the ground rather than a shrinking ball.
-        expect(p.height).toBeLessThan(p.width);
+        expect(pose.height).toBeLessThan(pose.width);
     });
 
     it("deflates monotonically as the collapse progresses", () => {
         let prevWidth = Infinity;
         let prevHeight = Infinity;
         for (let i = 0; i <= 10; i++) {
-            const p = collapsePose(1, i / 10);
-            expect(p.width).toBeLessThanOrEqual(prevWidth);
-            expect(p.height).toBeLessThanOrEqual(prevHeight);
-            prevWidth = p.width;
-            prevHeight = p.height;
+            const pose = collapsePose(1, i / 10);
+            expect(pose.width).toBeLessThanOrEqual(prevWidth);
+            expect(pose.height).toBeLessThanOrEqual(prevHeight);
+            prevWidth = pose.width;
+            prevHeight = pose.height;
         }
     });
 
@@ -78,8 +78,8 @@ describe("carrion deflation", () => {
     });
 
     it("flattens as it settles, never taller than it is wide", () => {
-        for (const r of [0, 0.25, 0.5, 0.75, 1]) {
-            const pose = carrionPose(r);
+        for (const remaining of [0, 0.25, 0.5, 0.75, 1]) {
+            const pose = carrionPose(remaining);
             // A fresh corpse is a round ball (height == width); it only ever
             // gets flatter from there.
             expect(pose.height).toBeLessThanOrEqual(pose.width);
@@ -120,18 +120,18 @@ describe("corpse exits", () => {
 
 describe("scavenging", () => {
     it("starts at the corpse's size, at rest", () => {
-        const p = feedPose(0.8, 0.6, 0);
-        expect(p.width).toBeCloseTo(0.8, 10);
-        expect(p.height).toBeCloseTo(0.6, 10);
-        expect(p.eased).toBe(0);
+        const pose = feedPose(0.8, 0.6, 0);
+        expect(pose.width).toBeCloseTo(0.8, 10);
+        expect(pose.height).toBeCloseTo(0.6, 10);
+        expect(pose.eased).toBe(0);
     });
 
     it("shrinks to a morsel by the time it is swallowed", () => {
-        const p = feedPose(1, 1, 1);
-        expect(p.eased).toBe(1);
-        expect(p.width).toBeLessThan(0.2);
-        expect(p.width).toBeGreaterThan(0);
-        expect(p.height).toBeLessThan(0.2);
+        const pose = feedPose(1, 1, 1);
+        expect(pose.eased).toBe(1);
+        expect(pose.width).toBeLessThan(0.2);
+        expect(pose.width).toBeGreaterThan(0);
+        expect(pose.height).toBeLessThan(0.2);
     });
 
     it("shrinks monotonically as it is pulled in", () => {
@@ -150,8 +150,8 @@ describe("scavenging", () => {
     });
 
     it("preserves the corpse's proportions as it shrinks", () => {
-        const p = feedPose(0.8, 0.4, 0.6);
-        expect(p.width / p.height).toBeCloseTo(0.8 / 0.4, 10);
+        const pose = feedPose(0.8, 0.4, 0.6);
+        expect(pose.width / pose.height).toBeCloseTo(0.8 / 0.4, 10);
     });
 
     it("clamps progress outside 0..1", () => {
