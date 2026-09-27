@@ -1,35 +1,149 @@
+import type { ReplayFrame } from "../observe/replay";
+import { seasonAbundanceAt } from "../sim/world";
 import type { World, TurnRecord } from "../sim/world";
 
 export interface Hud {
-    update(world: World, paused: boolean): void;
+    /** Pass a replay frame while scrubbing so the HUD follows the historical tick. */
+    update(world: World, paused: boolean, replay?: ReplayFrame): void;
 }
 
-const CHART_WIDTH = 240;
-const CHART_HEIGHT = 54;
-const CHART_SPAN = 120; // how many recent turns the chart shows
+const CHART_WIDTH = 180;
+const CHART_HEIGHT = 40;
+const CHART_SPAN = 80; // how many recent turns the chart shows
 
 const HERB_COLOR = "#d7f05a";
 const CARN_COLOR = "#ff7b6b";
 const PLANT_COLOR = "#57c26e";
+const SEASON_COLOR = "#e6b45a";
 
-/** SVG polyline points for a series of the last N records, scaled to 0..max. */
+/**
+ * SVG polyline points for a series of the last N records, scaled to 0..max.
+ * Pass `fixedMax` to pin the scale instead of scaling to the series' own max
+ * (used by the season curve, whose 0..1 range should fill the chart).
+ */
 function seriesPoints(
     records: TurnRecord[],
     pick: (r: TurnRecord) => number,
+    fixedMax?: number,
 ): string {
     const recent = records.slice(-CHART_SPAN);
     if (recent.length === 0) return "";
-    let max = 1;
-    for (const r of recent) max = Math.max(max, pick(r));
+    let max = fixedMax ?? 1;
+    if (fixedMax === undefined) {
+        for (const record of recent) max = Math.max(max, pick(record));
+    }
     const step = CHART_WIDTH / (CHART_SPAN - 1);
     const base = recent.length < CHART_SPAN ? CHART_SPAN - recent.length : 0;
     return recent
-        .map((r, i) => {
-            const x = (base + i) * step;
-            const y = CHART_HEIGHT - (pick(r) / max) * (CHART_HEIGHT - 4) - 2;
+        .map((record, index) => {
+            const x = (base + index) * step;
+            const y = CHART_HEIGHT - (pick(record) / max) * (CHART_HEIGHT - 4) - 2;
             return `${x.toFixed(1)},${y.toFixed(1)}`;
         })
         .join(" ");
+}
+interface HudCounts {
+    turn: number;
+    tick: number;
+    herb: number;
+    carn: number;
+    plantCount: number;
+    abundance: number | null;
+}
+
+function resolveHudCounts(world: World, replay?: ReplayFrame): HudCounts {
+    if (replay) {
+        return {
+            turn: replay.turn,
+            tick: replay.tick,
+            herb: replay.populations.herbivore,
+            carn: replay.populations.carnivore,
+            plantCount: replay.populations.plants,
+            abundance: replay.seasonAbundance,
+        };
+    }
+    const seasonLen = world.config.plantSeasonLength ?? 0;
+    const livingPlants = world.plants.filter((plantItem) => plantItem.alive).length;
+    return {
+        turn: world.turn,
+        tick: world.tick,
+        herb: world.populationOf("herbivore"),
+        carn: world.populationOf("carnivore"),
+        plantCount: livingPlants,
+        abundance: seasonLen > 0 ? world.seasonAbundance : null,
+    };
+}
+
+function formatSeasonSuffix(abundance: number | null): string {
+    if (abundance === null) return "";
+    return ` · 季節 ${Math.round(abundance * 100)}%`;
+}
+
+function updateMetrics(
+    record: TurnRecord | undefined,
+    barHerbEl: HTMLElement,
+    barCarnEl: HTMLElement,
+    metaHerbEl: Element,
+    metaCarnEl: Element,
+): void {
+    if (!record) return;
+    barHerbEl.style.width = `${Math.min(100, record.avgEnergy.herbivore).toFixed(0)}%`;
+    barCarnEl.style.width = `${Math.min(100, record.avgEnergy.carnivore).toFixed(0)}%`;
+    metaHerbEl.textContent =
+        `均能 ${record.avgEnergy.herbivore.toFixed(0)} · 世代 ${record.avgGeneration.herbivore.toFixed(0)} · 生 ${record.births.herbivore} 死 ${record.deaths.herbivore}`;
+    metaCarnEl.textContent =
+        `均能 ${record.avgEnergy.carnivore.toFixed(0)} · 世代 ${record.avgGeneration.carnivore.toFixed(0)} · 生 ${record.births.carnivore} 死 ${record.deaths.carnivore}`;
+}
+
+function updateStateBanner(
+    world: World,
+    paused: boolean,
+    stateEl: Element,
+    overEl: HTMLElement,
+    overTitleEl: Element,
+    overSubEl: Element,
+): void {
+    const over = world.gameOver;
+    if (over !== null) {
+        const name = over === "herbivore" ? "草食" : "肉食";
+        stateEl.textContent = "訓練結束";
+        stateEl.className = "hud-state dead";
+        overEl.hidden = false;
+        overTitleEl.textContent = `${name}族群滅絕`;
+        overSubEl.innerHTML = `本次訓練於回合 ${world.turn} 結束 · 共 ${world.tick} ticks<br>按 <kbd>R</kbd> 重新投放`;
+        return;
+    }
+    overEl.hidden = true;
+    if (paused) {
+        stateEl.textContent = "已暫停";
+        stateEl.className = "hud-state paused";
+    } else {
+        stateEl.textContent = "運行中";
+        stateEl.className = "hud-state live";
+    }
+}
+
+function updateSparklines(
+    records: TurnRecord[],
+    seasonLen: number,
+    seasonDepth: number,
+    lineHerbEl: Element,
+    lineCarnEl: Element,
+    linePlantEl: Element,
+    lineSeasonEl: Element,
+): void {
+    if (records.length <= 1) return;
+    lineHerbEl.setAttribute("points", seriesPoints(records, (rec) => rec.populations.herbivore));
+    lineCarnEl.setAttribute("points", seriesPoints(records, (rec) => rec.populations.carnivore));
+    linePlantEl.setAttribute("points", seriesPoints(records, (rec) => rec.plantCount));
+    if (seasonLen > 0) {
+        lineSeasonEl.setAttribute(
+            "points",
+            seriesPoints(records, (rec) => seasonAbundanceAt(rec.tick, seasonLen, seasonDepth), 1),
+        );
+    } else {
+        lineSeasonEl.setAttribute("points", "");
+    }
 }
 
 export function createHud(container: HTMLElement): Hud {
@@ -66,8 +180,10 @@ export function createHud(container: HTMLElement): Hud {
                 <span class="key"><i style="background:${HERB_COLOR}"></i>草食</span>
                 <span class="key"><i style="background:${CARN_COLOR}"></i>肉食</span>
                 <span class="key"><i style="background:${PLANT_COLOR}"></i>草</span>
+                <span class="key"><i style="background:${SEASON_COLOR}"></i>季節</span>
             </div>
             <svg viewBox="0 0 ${CHART_WIDTH} ${CHART_HEIGHT}" preserveAspectRatio="none">
+                <polyline id="line-season" fill="none" stroke="${SEASON_COLOR}" stroke-width="1" stroke-dasharray="4 3" opacity="0.5" points=""/>
                 <polyline id="line-plant" fill="none" stroke="${PLANT_COLOR}" stroke-width="1" opacity="0.55" points=""/>
                 <polyline id="line-herb" fill="none" stroke="${HERB_COLOR}" stroke-width="1.5" points=""/>
                 <polyline id="line-carn" fill="none" stroke="${CARN_COLOR}" stroke-width="1.5" points=""/>
@@ -86,59 +202,52 @@ export function createHud(container: HTMLElement): Hud {
     `;
     container.appendChild(overEl);
 
-    const q = <T extends Element>(sel: string): T => el.querySelector<T>(sel)!;
-    const stateEl = q("#hud-state");
-    const turnEl = q("#hud-turn");
-    const popHerbEl = q("#pop-herb");
-    const popCarnEl = q("#pop-carn");
-    const barHerbEl = q<HTMLElement>("#bar-herb");
-    const barCarnEl = q<HTMLElement>("#bar-carn");
-    const metaHerbEl = q("#meta-herb");
-    const metaCarnEl = q("#meta-carn");
-    const lineHerbEl = q("#line-herb");
-    const lineCarnEl = q("#line-carn");
-    const linePlantEl = q("#line-plant");
-    const overTitleEl = q("#over-title");
-    const overSubEl = q("#over-sub");
+    const queryHud = <T extends Element>(sel: string): T => {
+        const found = el.querySelector<T>(sel);
+        if (!found) throw new Error(`Missing HUD element: ${sel}`);
+        return found;
+    };
+    // The game-over veil is a sibling of the HUD, so its own children are
+    // queried within overEl — querying the HUD would return null and crash
+    // the frame loop the moment a run ends.
+    const queryOver = <T extends Element>(sel: string): T => {
+        const found = overEl.querySelector<T>(sel);
+        if (!found) throw new Error(`Missing HUD element: ${sel}`);
+        return found;
+    };
+    const stateEl = queryHud("#hud-state");
+    const turnEl = queryHud("#hud-turn");
+    const popHerbEl = queryHud("#pop-herb");
+    const popCarnEl = queryHud("#pop-carn");
+    const barHerbEl = queryHud<HTMLElement>("#bar-herb");
+    const barCarnEl = queryHud<HTMLElement>("#bar-carn");
+    const metaHerbEl = queryHud("#meta-herb");
+    const metaCarnEl = queryHud("#meta-carn");
+    const lineHerbEl = queryHud("#line-herb");
+    const lineCarnEl = queryHud("#line-carn");
+    const linePlantEl = queryHud("#line-plant");
+    const lineSeasonEl = queryHud("#line-season");
+    const overTitleEl = queryOver("#over-title");
+    const overSubEl = queryOver("#over-sub");
 
     return {
-        update(world: World, paused: boolean): void {
-            const record = world.records.at(-1);
-            const herb = world.populationOf("herbivore");
-            const carn = world.populationOf("carnivore");
-            const plantCount = world.plants.filter((p) => p.alive).length;
+        update(world: World, paused: boolean, replay?: ReplayFrame): void {
+            const records = replay
+                ? world.records.filter((recordItem) => recordItem.tick <= replay.tick)
+                : world.records;
+            const counts = resolveHudCounts(world, replay);
+            const seasonSuffix = formatSeasonSuffix(counts.abundance);
 
-            turnEl.textContent = `回合 ${world.turn} · tick ${world.tick} · 🌱 ${plantCount}`;
-            popHerbEl.textContent = String(herb);
-            popCarnEl.textContent = String(carn);
+            turnEl.textContent = `回合 ${counts.turn} · tick ${counts.tick} · 🌱 ${counts.plantCount}${seasonSuffix}`;
+            popHerbEl.textContent = String(counts.herb);
+            popCarnEl.textContent = String(counts.carn);
 
-            if (record) {
-                barHerbEl.style.width = `${Math.min(100, record.avgEnergy.herbivore).toFixed(0)}%`;
-                barCarnEl.style.width = `${Math.min(100, record.avgEnergy.carnivore).toFixed(0)}%`;
-                metaHerbEl.textContent =
-                    `均能 ${record.avgEnergy.herbivore.toFixed(0)} · 世代 ${record.avgGeneration.herbivore.toFixed(0)} · 生 ${record.births.herbivore} 死 ${record.deaths.herbivore}`;
-                metaCarnEl.textContent =
-                    `均能 ${record.avgEnergy.carnivore.toFixed(0)} · 世代 ${record.avgGeneration.carnivore.toFixed(0)} · 生 ${record.births.carnivore} 死 ${record.deaths.carnivore}`;
-            }
+            updateMetrics(records.at(-1), barHerbEl, barCarnEl, metaHerbEl, metaCarnEl);
+            updateStateBanner(world, paused, stateEl, overEl, overTitleEl, overSubEl);
 
-            const over = world.gameOver;
-            if (over !== null) {
-                const name = over === "herbivore" ? "草食" : "肉食";
-                stateEl.textContent = "訓練結束";
-                stateEl.className = "hud-state dead";
-                overEl.hidden = false;
-                overTitleEl.textContent = `💀 ${name}族群滅絕`;
-                overSubEl.innerHTML = `本次訓練於回合 ${world.turn} 結束 · 共 ${world.tick} ticks<br>按 <kbd>R</kbd> 重新投放`;
-            } else {
-                stateEl.textContent = paused ? "已暫停" : "運行中";
-                stateEl.className = paused ? "hud-state paused" : "hud-state live";
-            }
-
-            if (world.records.length > 1) {
-                lineHerbEl.setAttribute("points", seriesPoints(world.records, (r) => r.populations.herbivore));
-                lineCarnEl.setAttribute("points", seriesPoints(world.records, (r) => r.populations.carnivore));
-                linePlantEl.setAttribute("points", seriesPoints(world.records, (r) => r.plantCount));
-            }
+            const seasonLen = world.config.plantSeasonLength ?? 0;
+            const seasonDepth = world.config.plantSeasonDepth ?? 0.5;
+            updateSparklines(records, seasonLen, seasonDepth, lineHerbEl, lineCarnEl, linePlantEl, lineSeasonEl);
         },
     };
 }

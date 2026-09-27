@@ -1,19 +1,39 @@
 import "./style.css";
 import { World } from "./sim/world";
 import { makeSeeding } from "./sim/seeding";
-import { createRenderContext, resizeContext, type RenderContext } from "./render/scene";
+import {
+    atmosphereColorsForEra,
+    createRenderContext,
+    defaultAtmosphereColors,
+    resizeContext,
+    type RenderContext,
+} from "./render/scene";
 import { MeshPool } from "./render/meshes";
 import { ObserverCamera } from "./render/camera";
 import { createHud } from "./ui/hud";
 import { createControls } from "./ui/controls";
 import { createInspector } from "./ui/inspector";
+import { createWelcome } from "./ui/welcome";
 import { ReplayRecorder } from "./observe/replay";
+import { desertEra, grasslandEra, iceAgeEra } from "./sim/era";
+
+import type { EraConfig } from "./sim/era";
 
 const container = document.getElementById("app")!;
 
+/** Atmosphere colors for the active era, or the neutral default with no era. */
+function eraAtmosphereColors(era?: EraConfig) {
+    return era ? atmosphereColorsForEra(era) : defaultAtmosphereColors();
+}
+
 let world = new World(makeSeeding());
-let ctx: RenderContext = createRenderContext(container, world.config.width, world.config.height);
-const pool = new MeshPool(ctx.scene);
+let ctx: RenderContext = createRenderContext(
+    container,
+    world.config.width,
+    world.config.height,
+    eraAtmosphereColors(world.config.era),
+);
+const pool = new MeshPool(ctx.scene, world.config.era);
 const observerCam = new ObserverCamera(ctx.camera, ctx.renderer.domElement, world.config.width, world.config.height);
 const hud = createHud(container);
 const controls = createControls(container, {
@@ -42,8 +62,18 @@ const inspector = createInspector(container);
 const recorder = new ReplayRecorder(1, 3600);
 
 let ticksPerFrame = 10;
-let paused = false;
+let paused = true;
 let replayIndex: number | null = null;
+
+// Welcome screen: pick an era, then start.
+let selectedEra: import("./sim/era").EraConfig | undefined;
+createWelcome(container, (era) => {
+    selectedEra = era;
+    // The module-level world was seeded with no era; re-seed from the chosen
+    // one so the picker actually decides the run instead of only the next R.
+    restart();
+    paused = false;
+}, [grasslandEra, iceAgeEra, desertEra]);
 
 window.addEventListener("keydown", (event) => {
     if (event.code === "Space") {
@@ -90,7 +120,10 @@ ctx.renderer.domElement.addEventListener("pointerup", (e) => {
 });
 
 function restart(): void {
-    world = new World(makeSeeding());
+    world = new World(selectedEra ? makeSeeding(undefined, selectedEra) : makeSeeding());
+    ctx.atmosphere.setColors(eraAtmosphereColors(world.config.era));
+
+    pool.setEra(world.config.era);
     recorder.reset();
     pool.reset();
     replayIndex = null;
@@ -99,6 +132,10 @@ function restart(): void {
     observerCam.updateFromSim(null, null);
     (window as unknown as { world?: World }).world = world;
 }
+
+// Wall-clock origin for the animals' gait animation. Using real elapsed time
+// keeps the stride smooth regardless of tick speed or frame rate.
+const animStart = performance.now();
 
 function stepSimulation(): void {
     if (paused || world.gameOver !== null) return;
@@ -109,44 +146,47 @@ function stepSimulation(): void {
     }
 }
 
-function renderReplay(targetIndex: number): void {
+function renderReplay(targetIndex: number, animTime: number): void {
     const frames = recorder.size;
     if (frames > 0) {
         const idx = Math.min(Math.max(0, targetIndex), frames - 1);
         const f = recorder.frameAt(idx);
         if (f) {
-            pool.syncFrame(f, inspector.selectedId());
+            pool.syncFrame(f, inspector.selectedId(), animTime);
             ctx.atmosphere.syncSeason(f.seasonAbundance);
+            hud.update(world, paused, f);
             controls.setReplayIndex(idx, frames);
         }
     }
     inspector.update(null);
 }
 
-function renderLive(): void {
+function renderLive(animTime: number): void {
     const selectedId = inspector.selectedId();
-    pool.sync(world, selectedId);
+    pool.sync(world, selectedId, animTime);
     ctx.atmosphere.syncSeason((world.config.plantSeasonLength ?? 0) > 0 ? world.seasonAbundance : null);
     if (selectedId !== null) {
-        const e = world.entities.find((x) => x.id === selectedId && x.alive);
-        observerCam.updateFromSim(e ? e.pos.x : null, e ? e.pos.y : null);
+        const selectedEntity = world.entities.find((entity) => entity.id === selectedId && entity.alive);
+        observerCam.updateFromSim(selectedEntity ? selectedEntity.pos.x : null, selectedEntity ? selectedEntity.pos.y : null);
     }
     inspector.update(world);
+    hud.update(world, paused);
 }
 
 function frame(): void {
+    const animTime = (performance.now() - animStart) / 1000;
+    const replayIndexNow = replayIndex;
     stepSimulation();
-    if (replayIndex !== null) {
-        renderReplay(replayIndex);
+    if (replayIndexNow !== null) {
+        renderReplay(replayIndexNow, animTime);
     } else {
-        renderLive();
+        renderLive(animTime);
     }
 
     observerCam.apply();
     ctx.renderer.render(ctx.scene, ctx.camera);
-    hud.update(world, paused);
     controls.setPaused(paused);
-    controls.setReplayVisible(recorder.size > 0, recorder.size);
+    controls.setReplayVisible(replayIndexNow !== null, recorder.size);
     requestAnimationFrame(frame);
 }
 

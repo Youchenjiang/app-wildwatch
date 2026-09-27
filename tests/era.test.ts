@@ -1,0 +1,61 @@
+import { describe, expect, it } from "vitest";
+import { World } from "../src/sim/world";
+import { makeSeeding } from "../src/sim/seeding";
+import { desertEra, grasslandEra, iceAgeEra } from "../src/sim/era";
+import { seasonAbundanceAt, seasonalRegrowMultiplier } from "../src/sim/world";
+
+describe("era presets", () => {
+    it("grassland reproduces the validated baseline seeding", () => {
+        const config = makeSeeding(20260907, grasslandEra);
+        expect(config.herbivoreCount).toBe(60);
+        expect(config.carnivoreCount).toBe(3);
+        expect(config.plantCount).toBe(240);
+        expect(config.plantRegrowPerTick).toBe(1);
+        expect(config.plantEnergy).toBe(18);
+        expect(config.maxPlants).toBe(500);
+        expect(config.plantSeasonLength).toBe(3000);
+        expect(config.plantSeasonDepth).toBe(0.5);
+        // The era-free (legacy) seeding must resolve to the same values.
+        const { era: _bareEra, ...bare } = makeSeeding();
+        const { era: _grassEra, ...grass } = config;
+        expect(bare).toEqual(grass);
+    });
+
+    it("an era owns its vegetation cycle and starting counts", () => {
+        const ice = makeSeeding(20260907, iceAgeEra);
+        expect(ice.plantSeasonLength).toBe(3400);
+        expect(ice.plantSeasonDepth).toBe(0.4);
+        expect(ice.carnivoreCount).toBe(1);
+
+        const desert = makeSeeding(20260907, desertEra);
+        expect(desert.plantSeasonLength).toBe(5000);
+        expect(desert.plantSeasonDepth).toBe(0.6);
+        expect(desert.plantRegrowPerTick).toBe(0.55);
+        expect(desert.plantEnergy).toBe(26);
+        expect(desert.maxPlants).toBe(340);
+    });
+
+    it("the world resolves era species params onto spawned entities", () => {
+        const base = new World(makeSeeding());
+        const desert = new World(makeSeeding(20260907, desertEra));
+        const herb = (simWorld: World) => simWorld.entities.find((entity) => entity.species.kind === "herbivore")?.species;
+        const carn = (simWorld: World) => simWorld.entities.find((entity) => entity.species.kind === "carnivore")?.species;
+
+        // Desert herbivores must range further to find sparse plants.
+        expect(herb(desert)?.senseRange).toBeGreaterThan(herb(base)?.senseRange ?? 0);
+        expect(carn(desert)?.moveCost).toBeLessThan(carn(base)?.moveCost ?? Infinity);
+        // Base (no era) still uses the shared SPECIES params.
+        expect(herb(base)?.senseRange).toBe(14);
+    });
+
+    it("seasonAbundance spans the era's own trough depth", () => {
+        for (const era of [grasslandEra, iceAgeEra, desertEra]) {
+            const length = era.plants.seasonLength ?? 0;
+            const depth = era.plants.seasonDepth ?? 0.5;
+            // Deepest trough: quarter-cycle in. Peak: three-quarter cycle in.
+            expect(seasonAbundanceAt(Math.round(length / 4), length, depth)).toBeCloseTo(0, 5);
+            expect(seasonAbundanceAt(Math.round((3 * length) / 4), length, depth)).toBeCloseTo(1, 5);
+            expect(seasonalRegrowMultiplier(Math.round(length / 4), length, depth)).toBeCloseTo(1 - depth, 5);
+        }
+    });
+});

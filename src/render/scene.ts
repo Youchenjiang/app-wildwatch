@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import type { EraConfig } from "../sim/era";
 
 export interface RenderContext {
     renderer: THREE.WebGLRenderer;
@@ -7,6 +8,24 @@ export interface RenderContext {
     view: number;
     /** Seasonal mood lighting/colors for the whole biome. */
     atmosphere: Atmosphere;
+}
+
+/** Era-aware atmosphere colors (sky/ground/wall/light) resolved from an era
+ * preset; the seasonal sync then lerps between peak and trough.
+ */
+export interface AtmosphereColors {
+    bgPeak: THREE.Color;
+    bgTrough: THREE.Color;
+    hemiSkyPeak: THREE.Color;
+    hemiSkyTrough: THREE.Color;
+    hemiGroundPeak: THREE.Color;
+    hemiGroundTrough: THREE.Color;
+    sunPeak: THREE.Color;
+    sunTrough: THREE.Color;
+    groundPeak: THREE.Color;
+    groundTrough: THREE.Color;
+    wallPeak: THREE.Color;
+    wallTrough: THREE.Color;
 }
 
 /**
@@ -22,35 +41,40 @@ export class Atmosphere {
     private readonly groundMat: THREE.MeshLambertMaterial;
     private readonly gridMat: THREE.LineBasicMaterial;
     private readonly wallMat: THREE.MeshLambertMaterial;
+    private colors: AtmosphereColors;
 
-    // Peak (abundance 1): the existing warm, lush summer palette.
-    private readonly bgPeak = new THREE.Color(0x0c140e);
-    private readonly bgTrough = new THREE.Color(0x303840);
-    private readonly hemiSkyPeak = new THREE.Color(0xcfe8d4);
-    private readonly hemiSkyTrough = new THREE.Color(0xb0b8c0);
-    private readonly hemiGroundPeak = new THREE.Color(0x1c2a20);
-    private readonly hemiGroundTrough = new THREE.Color(0x6a6860);
-    private readonly sunPeak = new THREE.Color(0xfff3d6);
-    private readonly sunTrough = new THREE.Color(0xd8dce4);
-    private readonly groundPeak = new THREE.Color(0x2e4631);
-    private readonly groundTrough = new THREE.Color(0x8a8878);
-    private readonly wallPeak = new THREE.Color(0x4a6a52);
-    private readonly wallTrough = new THREE.Color(0x808080);
+    /** Update the atmosphere palette to a new era's colors. Mid-run era
+     * transitions call this to retint the sky/ground/light/wall without
+     * rebuilding the scene. */
+    setColors(colors: AtmosphereColors): void {
+        this.colors = colors;
+        this.syncSeason(null);
+    }
 
-    constructor(scene: THREE.Scene, worldWidth: number, worldHeight: number) {
+    constructor(
+        scene: THREE.Scene,
+        worldWidth: number,
+        worldHeight: number,
+        colors: AtmosphereColors,
+    ) {
         this.scene = scene;
+        this.colors = colors;
         // Void beyond the world plate + soft ground shading.
-        scene.background = new THREE.Color(0x0c140e);
-        scene.fog = new THREE.Fog(0x0c140e, 150, 320);
+        scene.background = colors.bgPeak.clone();
+        scene.fog = new THREE.Fog(colors.bgPeak.clone(), 150, 320);
 
-        this.hemi = new THREE.HemisphereLight(0xcfe8d4, 0x1c2a20, 0.9);
+        this.hemi = new THREE.HemisphereLight(
+            colors.hemiSkyPeak.clone(),
+            colors.hemiGroundPeak.clone(),
+            0.9,
+        );
         scene.add(this.hemi);
 
-        this.sun = new THREE.DirectionalLight(0xfff3d6, 1.6);
+        this.sun = new THREE.DirectionalLight(colors.sunPeak.clone(), 1.6);
         this.sun.position.set(-50, 130, 30);
         scene.add(this.sun);
 
-        this.groundMat = new THREE.MeshLambertMaterial({ color: 0x2e4631 });
+        this.groundMat = new THREE.MeshLambertMaterial({ color: colors.groundPeak.clone() });
         const ground = new THREE.Mesh(
             new THREE.PlaneGeometry(worldWidth, worldHeight),
             this.groundMat,
@@ -70,7 +94,7 @@ export class Atmosphere {
         // Boundary wall marks the closed world (rule 7) so the playfield edge reads clearly.
         const wallHeight = 3;
         this.wallMat = new THREE.MeshLambertMaterial({
-            color: 0x4a6a52,
+            color: colors.wallPeak.clone(),
             transparent: true,
             opacity: 0.35,
         });
@@ -91,16 +115,17 @@ export class Atmosphere {
     syncSeason(abundance: number | null): void {
         const seasonalAbundance = abundance === null ? 1 : clamp01(abundance);
         const trough = 1 - seasonalAbundance;
-        (this.scene.background as THREE.Color).set(this.bgPeak).lerp(this.bgTrough, trough);
-        (this.scene.fog as THREE.Fog).color.set(this.bgPeak).lerp(this.bgTrough, trough);
-        this.hemi.color.set(this.hemiSkyPeak).lerp(this.hemiSkyTrough, trough);
-        this.hemi.groundColor.set(this.hemiGroundPeak).lerp(this.hemiGroundTrough, trough);
+        const colors = this.colors;
+        (this.scene.background as THREE.Color).copy(colors.bgPeak).lerp(colors.bgTrough, trough);
+        (this.scene.fog as THREE.Fog).color.copy(colors.bgPeak).lerp(colors.bgTrough, trough);
+        this.hemi.color.copy(colors.hemiSkyPeak).lerp(colors.hemiSkyTrough, trough);
+        this.hemi.groundColor.copy(colors.hemiGroundPeak).lerp(colors.hemiGroundTrough, trough);
         this.hemi.intensity = 0.9 - 0.08 * trough;
-        this.sun.color.set(this.sunPeak).lerp(this.sunTrough, trough);
+        this.sun.color.copy(colors.sunPeak).lerp(colors.sunTrough, trough);
         this.sun.intensity = 1.6 - 0.15 * trough;
-        this.groundMat.color.set(this.groundPeak).lerp(this.groundTrough, trough);
+        this.groundMat.color.copy(colors.groundPeak).lerp(colors.groundTrough, trough);
         this.gridMat.opacity = 1 - 0.15 * trough;
-        this.wallMat.color.set(this.wallPeak).lerp(this.wallTrough, trough);
+        this.wallMat.color.copy(colors.wallPeak).lerp(colors.wallTrough, trough);
     }
 }
 
@@ -112,6 +137,7 @@ export function createRenderContext(
     container: HTMLElement,
     worldWidth: number,
     worldHeight: number,
+    colors?: AtmosphereColors,
 ): RenderContext {
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -130,9 +156,62 @@ export function createRenderContext(
         .clone()
         .sub(new THREE.Vector3(worldWidth / 2, 0, worldHeight / 2));
 
-    const atmosphere = new Atmosphere(scene, worldWidth, worldHeight);
+    const atmosphere = new Atmosphere(
+        scene,
+        worldWidth,
+        worldHeight,
+        colors ?? defaultAtmosphereColors(),
+    );
 
     return { renderer, scene, camera, view, atmosphere };
+}
+
+export function defaultAtmosphereColors(): AtmosphereColors {
+    return {
+        bgPeak: new THREE.Color(0x0c140e),
+        bgTrough: new THREE.Color(0x303840),
+        hemiSkyPeak: new THREE.Color(0xcfe8d4),
+        hemiSkyTrough: new THREE.Color(0xb0b8c0),
+        hemiGroundPeak: new THREE.Color(0x1c2a20),
+        hemiGroundTrough: new THREE.Color(0x6a6860),
+        sunPeak: new THREE.Color(0xfff3d6),
+        sunTrough: new THREE.Color(0xd8dce4),
+        groundPeak: new THREE.Color(0x2e4631),
+        groundTrough: new THREE.Color(0x8a8878),
+        wallPeak: new THREE.Color(0x4a6a52),
+        wallTrough: new THREE.Color(0x808080),
+    };
+}
+
+/**
+ * Resolve an era's palette into atmosphere colors.
+ *
+ * The biome's ambient colors (sky background/fog, ground, wall) come straight
+ * from the era. The *light* colors must not: an era's sky is a dark void color
+ * (grassland is near-black), so using it as the sun would render the whole
+ * world at ~10% brightness. Instead we tint a bright base toward the era's sky
+ * hue, which keeps each era's color temperature (warm desert, cold ice age)
+ * while guaranteeing the scene stays lit.
+ */
+export function atmosphereColorsForEra(era: EraConfig): AtmosphereColors {
+    const sky = new THREE.Color(era.skyColor);
+    const skyTrough = new THREE.Color(era.skyTroughColor);
+    const tint = (c: THREE.Color, towardWhite: number) =>
+        c.clone().lerp(new THREE.Color(0xffffff), towardWhite);
+    return {
+        bgPeak: new THREE.Color(era.skyColor),
+        bgTrough: new THREE.Color(era.skyTroughColor),
+        hemiSkyPeak: tint(sky, 0.72),
+        hemiSkyTrough: tint(skyTrough, 0.72),
+        hemiGroundPeak: new THREE.Color(era.groundColor),
+        hemiGroundTrough: new THREE.Color(era.groundTroughColor),
+        sunPeak: tint(sky, 0.85),
+        sunTrough: tint(skyTrough, 0.85),
+        groundPeak: new THREE.Color(era.groundColor),
+        groundTrough: new THREE.Color(era.groundTroughColor),
+        wallPeak: new THREE.Color(era.groundColor),
+        wallTrough: new THREE.Color(era.groundTroughColor),
+    };
 }
 
 export function resizeContext(ctx: RenderContext, width: number, height: number): void {

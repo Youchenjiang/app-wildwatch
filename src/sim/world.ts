@@ -6,6 +6,7 @@ import { SPECIES } from "./species";
 import type { SpeciesKind, SpeciesParams, Vec2 } from "./types";
 import { createMemory, type Memory } from "./memory";
 import { LifeGrid } from "./learning";
+import { overlaySpecies, overlayPlants } from "./era";
 
 export const DEFAULT_BRAIN_SPEC: BrainSpec = {
     inputSize: 11,
@@ -83,6 +84,8 @@ export interface WorldConfig {
     lifeGridCap?: number;
     /** Energy a corpse loses per tick as it decays (default 0.05). */
     carrionDecayPerTick?: number;
+    /** Scenario era: redisot the biome palette and species tuning per era. */
+    era?: import("./era").EraConfig;
 }
 
 interface Sense {
@@ -156,6 +159,9 @@ export class World {
     private plantRegrowAccum = 0;
     /** Set once either species has died out; the run is over (rules forbid re-seeding). */
     private gameOverBy: SpeciesKind | null = null;
+    readonly herbSpecies: SpeciesParams;
+    readonly carnSpecies: SpeciesParams;
+    readonly plantParams: { regrowPerTick: number; energy: number; maxPlants: number };
 
     constructor(config: WorldConfig) {
         this.config = config;
@@ -166,11 +172,27 @@ export class World {
             config.height,
             config.lifeGridCellsize ?? 6,
         );
+        // Era-resolved species/plant params: an era can override any species
+        // tuning knob or plant throughput. Absent era == base SPECIES params
+        // passed through by reference (so mutable-Global tests still work).
+        const era = config.era;
+        const herb = era?.herbivore ? overlaySpecies(SPECIES.herbivore, era.herbivore) : SPECIES.herbivore;
+        const carn = era?.carnivore ? overlaySpecies(SPECIES.carnivore, era.carnivore) : SPECIES.carnivore;
+        const plant = overlayPlants(
+            config.plantRegrowPerTick,
+            config.plantEnergy,
+            config.maxPlants,
+            era?.plants ?? {},
+        );
+        // Store resolved params so spawnEntity/reproduce can read them back.
+        this.herbSpecies = herb;
+        this.carnSpecies = carn;
+        this.plantParams = plant;
         for (let i = 0; i < config.herbivoreCount; i++) {
-            this.spawnEntity(SPECIES.herbivore, 0, undefined, undefined, undefined, createMemory(memCap));
+            this.spawnEntity(herb, 0, undefined, undefined, undefined, createMemory(memCap));
         }
         for (let i = 0; i < config.carnivoreCount; i++) {
-            this.spawnEntity(SPECIES.carnivore, 0, undefined, undefined, undefined, createMemory(memCap));
+            this.spawnEntity(carn, 0, undefined, undefined, undefined, createMemory(memCap));
         }
         for (let i = 0; i < config.plantCount; i++) {
             this.spawnPlant();
@@ -194,7 +216,7 @@ export class World {
             id: this.nextId++,
             x: pos.x,
             y: pos.y,
-            energy: this.config.plantEnergy,
+            energy: this.plantParams.energy,
             alive: true,
         });
     }
@@ -295,9 +317,9 @@ export class World {
         const seasonLength = this.config.plantSeasonLength ?? 0;
         const seasonDepth = this.config.plantSeasonDepth ?? 0.5;
         this.plantRegrowAccum +=
-            this.config.plantRegrowPerTick * seasonalRegrowMultiplier(this.tick, seasonLength, seasonDepth);
+            this.plantParams.regrowPerTick * seasonalRegrowMultiplier(this.tick, seasonLength, seasonDepth);
         while (this.plantRegrowAccum >= 1) {
-            if (this.plants.length >= this.config.maxPlants) {
+            if (this.plants.length >= this.plantParams.maxPlants) {
                 this.plantRegrowAccum = 0;
                 break;
             }
