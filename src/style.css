@@ -493,7 +493,6 @@ body {
     align-items: center;
     justify-content: center;
     gap: 12px;
-    background-color: #0b120d;
     background: rgba(6, 10, 7, 0.85);
     backdrop-filter: blur(4px);
     text-align: center;
