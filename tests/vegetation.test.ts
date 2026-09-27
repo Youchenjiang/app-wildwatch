@@ -165,7 +165,7 @@ describe("vegetation geography", () => {
         }
         // Dispersal draws from the seeded RNG, so two runs of the same seeding
         // must place the grass identically, down to the coordinates.
-        expect(worldA.plants.length).toBe(worldB.plants.length);
+        expect(worldA.plants).toHaveLength(worldB.plants.length);
         for (let idx = 0; idx < worldA.plants.length; idx++) {
             expect(worldA.plants[idx].x).toBe(worldB.plants[idx].x);
             expect(worldA.plants[idx].y).toBe(worldB.plants[idx].y);
