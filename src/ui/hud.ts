@@ -198,8 +198,8 @@ function updateMetrics(
     lineageLeg.near.textContent = record.meanNearestKin.toFixed(1);
 }
 
-function updateStateBanner(
-    world: World,
+export function updateStateBanner(
+    world: { gameOver: SpeciesKind | null; turn: number; tick: number },
     paused: boolean,
     stateEl: Element,
     overEl: HTMLElement,
@@ -208,6 +208,7 @@ function updateStateBanner(
 ): void {
     const veil = gameOverVeil(world.gameOver, world.turn, world.tick);
     overEl.hidden = veil.hidden;
+    overEl.style.display = veil.hidden ? "none" : "";
     if (!veil.hidden) {
         stateEl.textContent = "訓練結束";
         stateEl.className = "hud-state dead";
@@ -215,6 +216,8 @@ function updateStateBanner(
         overSubEl.innerHTML = veil.sub;
         return;
     }
+    overTitleEl.textContent = "";
+    overSubEl.innerHTML = "";
     if (paused) {
         stateEl.textContent = "已暫停";
         stateEl.className = "hud-state paused";
@@ -327,6 +330,7 @@ export function createHud(container: HTMLElement): Hud {
     const overEl = document.createElement("div");
     overEl.id = "hud-over";
     overEl.hidden = true;
+    overEl.style.display = "none";
     overEl.innerHTML = `
         <div class="over-title" id="over-title"></div>
         <div class="over-sub" id="over-sub"></div>

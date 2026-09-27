@@ -37,6 +37,13 @@ describe("meal log", () => {
         expect(log.counts()).toEqual({ plant: 0, prey: 0, carrion: 0 });
     });
 
+    it("returns empty array when limit is zero or negative", () => {
+        const log = createMealLog(4);
+        log.add({ source: "plant", energy: 5, age: 10 });
+        expect(log.recent(0)).toEqual([]);
+        expect(log.recent(-2)).toEqual([]);
+    });
+
     it("returns recent meals newest first", () => {
         const log = createMealLog(8);
         log.add({ source: "plant", energy: 5, age: 10 });

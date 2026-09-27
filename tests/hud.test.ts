@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { depthScale, gameOverVeil, kinStatText } from "../src/ui/hud";
+import { depthScale, gameOverVeil, kinStatText, updateStateBanner } from "../src/ui/hud";
 import type { TurnRecord } from "../src/sim/world";
 
 const depthRecord = (livingMaxDepth: number): TurnRecord => ({ livingMaxDepth }) as TurnRecord;
@@ -36,6 +36,35 @@ describe("game-over veil", () => {
         expect(herb.sub).toContain("92981 ticks");
 
         expect(gameOverVeil("carnivore", 12, 340).title).toBe("肉食族群滅絕");
+    });
+
+    it("updates and clears DOM elements on state transitions and restarts", () => {
+        const stateEl = { textContent: "", className: "" } as unknown as Element;
+        const overEl = { hidden: false, style: { display: "" } } as unknown as HTMLElement;
+        const overTitleEl = { textContent: "" } as unknown as Element;
+        const overSubEl = { innerHTML: "" } as unknown as Element;
+
+        // 1. Live run
+        updateStateBanner({ gameOver: null, turn: 10, tick: 500 }, false, stateEl, overEl, overTitleEl, overSubEl);
+        expect(overEl.hidden).toBe(true);
+        expect(overEl.style.display).toBe("none");
+        expect(stateEl.textContent).toBe("運行中");
+
+        // 2. Extinction (Game over)
+        updateStateBanner({ gameOver: "herbivore", turn: 15, tick: 800 }, false, stateEl, overEl, overTitleEl, overSubEl);
+        expect(overEl.hidden).toBe(false);
+        expect(overEl.style.display).toBe("");
+        expect(stateEl.textContent).toBe("訓練結束");
+        expect(overTitleEl.textContent).toBe("草食族群滅絕");
+        expect(overSubEl.innerHTML).toContain("回合 15");
+
+        // 3. Restart (World is reseeded)
+        updateStateBanner({ gameOver: null, turn: 0, tick: 0 }, false, stateEl, overEl, overTitleEl, overSubEl);
+        expect(overEl.hidden).toBe(true);
+        expect(overEl.style.display).toBe("none");
+        expect(overTitleEl.textContent).toBe("");
+        expect(overSubEl.innerHTML).toBe("");
+        expect(stateEl.textContent).toBe("運行中");
     });
 });
 

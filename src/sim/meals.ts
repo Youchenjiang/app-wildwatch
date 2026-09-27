@@ -77,6 +77,7 @@ export function createMealLog(capacity = DEFAULT_MEAL_CAPACITY): MealLog {
         },
 
         recent(limit: number): ReadonlyArray<Meal> {
+            if (limit <= 0) return [];
             return meals.slice(-limit).reverse();
         },
 
