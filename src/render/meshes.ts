@@ -102,7 +102,11 @@ export class MeshPool {
         body.setAttribute('color', new THREE.BufferAttribute(
             new Float32Array(body.attributes.position.count * 3).fill(1), 3,
         ));
-        return mergeGeometries([body, nose], true)!;
+        const merged = mergeGeometries([body, nose], true);
+        if (!merged) {
+            throw new Error("Failed to merge animal geometries");
+        }
+        return merged;
     }
     private readonly plantGeometry = new THREE.CylinderGeometry(0.35, 0.5, 0.8, 6);
     private readonly carrionGeometry = new THREE.SphereGeometry(0.65, 8, 6);
