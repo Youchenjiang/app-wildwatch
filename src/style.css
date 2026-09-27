@@ -493,6 +493,7 @@ body {
     align-items: center;
     justify-content: center;
     gap: 12px;
+    background-color: #0b120d;
     background: rgba(6, 10, 7, 0.85);
     backdrop-filter: blur(4px);
     text-align: center;
@@ -518,7 +519,7 @@ body {
 
 #welcome .welcome-sub {
     font-size: 13px;
-    color: #8ba595;
+    color: #d9e7dc;
     max-width: 340px;
     line-height: 1.6;
 }
@@ -556,7 +557,7 @@ body {
 
 #welcome .welcome-keys {
     font-size: 10px;
-    color: #5f7a6a;
+    color: #a3c2af;
     margin-top: 4px;
 }
 
@@ -570,7 +571,7 @@ body {
 
 .era-picker-label {
     font-size: 11px;
-    color: #5f7a6a;
+    color: #a3c2af;
     letter-spacing: 1px;
     text-transform: uppercase;
 }
@@ -586,24 +587,24 @@ body {
     align-items: center;
     gap: 4px;
     padding: 8px 14px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: #141c16;
+    border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.15s;
-    color: #8ba595;
+    color: #d9e7dc;
     font-family: inherit;
 }
 
 .era-card:hover {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(255, 255, 255, 0.2);
+    background: #1b261e;
+    border-color: rgba(255, 255, 255, 0.22);
 }
 
 .era-card.era-selected {
-    background: rgba(143, 217, 162, 0.18);
+    background: #1d3324;
     border-color: #8fd9a2;
-    color: #b9e4c0;
+    color: #f2faf4;
     box-shadow: 0 0 0 1px rgba(143, 217, 162, 0.5);
 }
 
@@ -621,8 +622,7 @@ body {
 
 .era-desc {
     font-size: 10px;
-    color: #5f7a6a;
-
+    color: #a3c2af;
 }
 
 @keyframes welcome-fade {
