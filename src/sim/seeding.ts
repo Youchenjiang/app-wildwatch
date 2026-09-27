@@ -10,12 +10,20 @@
  * encoding (rule 8), the carrion cycle, seasonal vegetation (rule 9) and the
  * turn-energy cost: every candidate in the sweep sustains both species for
  * the full 30,000-tick horizon (the locked seeding itself finishes at
- * h=31 c=41). Each era carries its own validated starting counts
+ * h=53 c=50, with every alternate seeding in the sweep surviving too). That
+ * baseline has moved twice, deliberately each time. First when sensing and
+ * eating reach became true distances rather than grid-cell scans — at the old
+ * values a 1.1-unit eat radius reached about 10 units. Then when vegetation
+ * gained geography (plantSpread/plantSpacing/plantColoniseChance below): grass
+ * grows from grass in patches instead of appearing at independent uniform
+ * positions, which is what gives a forager somewhere worth going. Setting
+ * plantSpread to 0 restores the old even sprinkle exactly, h=28 c=49.
+ * Each era carries its own validated starting counts
  * (EraConfig.seeding) so a run seeded from an era never drifts out of the
  * envelope that era was tuned in. Re-validate whenever an ecosystem mechanic
  * or era preset changes.
  */
-import { DEFAULT_BRAIN_SPEC, type WorldConfig } from "./world";
+import { DEFAULT_BRAIN_SPEC, type ReproductionMode, type WorldConfig } from "./world";
 import type { EraConfig } from "./era";
 
 /** Shared defaults for a run with no era (and for era fields left unset). */
@@ -25,7 +33,11 @@ export const BASE_SEEDING = {
     plantCount: 240,
 } as const;
 
-export function makeSeeding(seed = 20260907, era?: EraConfig): WorldConfig {
+export function makeSeeding(
+    seed = 20260907,
+    era?: EraConfig,
+    reproduction: ReproductionMode = "asexual",
+): WorldConfig {
     const plant = era?.plants ?? {};
     const counts = era?.seeding ?? {};
     return {
@@ -41,11 +53,15 @@ export function makeSeeding(seed = 20260907, era?: EraConfig): WorldConfig {
         turnLength: 100,
         populationCap: 500,
         mateRange: 3,
+        reproduction,
         mutationRate: 0.06,
         mutationSigma: 0.35,
         brainSpec: DEFAULT_BRAIN_SPEC,
         plantSeasonLength: plant.seasonLength ?? 3000,
         plantSeasonDepth: plant.seasonDepth ?? 0.5,
+        plantSpread: plant.spread ?? 4,
+        plantSpacing: plant.spacing ?? 2,
+        plantColoniseChance: plant.coloniseChance ?? 0.05,
         era,
     };
 }

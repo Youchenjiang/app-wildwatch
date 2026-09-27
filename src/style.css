@@ -720,6 +720,41 @@ body {
     color: #a3c2af;
 }
 
+#welcome .mode-cards {
+    display: flex;
+    gap: 8px;
+}
+
+#welcome .mode-card {
+    padding: 5px 18px;
+    background: #141c16;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    color: #d9e7dc;
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+#welcome .mode-card:hover {
+    background: #1b261e;
+    border-color: rgba(255, 255, 255, 0.22);
+}
+
+#welcome .mode-card.on {
+    background: #1d3324;
+    border-color: #8fd9a2;
+    color: #f2faf4;
+    box-shadow: 0 0 0 1px rgba(143, 217, 162, 0.5);
+}
+
+#welcome .mode-desc {
+    font-size: 10px;
+    color: #a3c2af;
+    min-height: 14px;
+}
+
 @keyframes welcome-fade {
     from {
         opacity: 0;

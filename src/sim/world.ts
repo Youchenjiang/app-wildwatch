@@ -1,6 +1,6 @@
 import { Brain, type BrainSpec } from "./brain";
 import { Entity } from "./entity";
-import { mulberry32, randRange, type RNG } from "./rng";
+import { mulberry32, pick, randRange, type RNG } from "./rng";
 import { SpatialGrid } from "./spatial-grid";
 import { SPECIES } from "./species";
 import type { SpeciesKind, SpeciesParams, Vec2 } from "./types";
@@ -37,6 +37,26 @@ export interface Carrion {
      * the lineage the body sat — the same figure a hunted kill reports. */
     fromGeneration: number;
 }
+
+/**
+ * How a population propagates. Chosen at seeding and locked for the run, like
+ * the era presets and the season cycle (rule 2: nothing about a run may be
+ * changed after it is seeded).
+ *
+ * There are two modes and no middle ground, on purpose. A sexual animal that
+ * cannot find a partner does not reproduce at all — it does not clone "as a
+ * fallback", because that is not what sexual reproduction means, and a mode
+ * that sometimes mates and sometimes clones cannot be reasoned about: it
+ * would silently report clonal births from a run the player set to sexual.
+ *
+ * - `sexual`: a birth needs a partner. Without one the animal keeps its
+ *   energy, stays off cooldown and tries again next tick, so an animal that
+ *   never meets a mate simply never breeds.
+ * - `asexual`: every birth is a clone of one parent, and no mate is ever
+ *   sought. This is what runs have always done in practice, so it is the
+ *   default and reproduces the validated baselines exactly.
+ */
+export type ReproductionMode = "asexual" | "sexual";
 
 /** Per-turn population statistics — the raw material for evolution charts. */
 export interface TurnRecord {
@@ -88,7 +108,11 @@ export interface WorldConfig {
     turnLength: number;
     populationCap: number;
     /** Distance within which a same-species neighbor is eligible as a mate. */
+    /** How far an animal can reach for a partner. Only consulted in sexual
+     * mode; asexual never looks for one. */
     mateRange: number;
+    /** How this run's populations propagate. Defaults to "asexual". */
+    reproduction?: ReproductionMode;
     mutationRate: number;
     mutationSigma: number;
     brainSpec: BrainSpec;
@@ -100,6 +124,35 @@ export interface WorldConfig {
     plantSeasonLength?: number;
     /** 0..1 seasonal trough depth (default 0.5): 1 starves plants fully. */
     plantSeasonDepth?: number;
+    /**
+     * How far a new plant may appear from the plant it grew from, in world
+     * units; 0 gives every plant an independent uniform position (default).
+     *
+     * This is what gives vegetation geography. An even sprinkle leaves an
+     * animal with nothing spatial to learn — food is equally dense everywhere,
+     * so "where the food is" is not a fact about any place, and the best
+     * available strategy is to eat whatever is in reach and wander. Growing
+     * from an existing plant instead makes patches, so ranging somewhere
+     * becomes worth something.
+     */
+    plantSpread?: number;
+    /**
+     * How close two plants may stand, in world units (default 0 = no limit).
+     *
+     * This is what makes a patch a patch instead of a single lump. Growing from
+     * a random existing plant is rich-get-richer — the biggest clump is the one
+     * most likely to be picked — so without a local limit the vegetation
+     * collapses into one blob and stops looking like a landscape at all. A
+     * saturated patch pushes its next seed elsewhere instead.
+     */
+    plantSpacing?: number;
+    /**
+     * 0..1 chance that a new plant colonises open ground anywhere instead of
+     * growing from an existing plant (default 0). Without any, a patch grazed
+     * to nothing could never come back and the world would end up bare rather
+     * than patchy.
+     */
+    plantColoniseChance?: number;
     /** Episodic memory capacity per entity (default 64). */
     memoryCapacity?: number;
     /** Population-level life grid cell size (default 6). */
@@ -130,6 +183,13 @@ const PREY_REFUGE_DENSITY = 0.012;
 const SATURATION_BONUS = 1.6;
 /** Floor on the catch factor when prey are critically rare (prey refuge). */
 const REFUGE_FLOOR = 0.05;
+
+/**
+ * How many spots near a parent plant a seed tries before it travels instead.
+ * Small on purpose: the cost of a wrong guess is one grid query, and a long
+ * search in a saturated patch would just be a slower way to give up.
+ */
+const PLANT_SPROUT_ATTEMPTS = 4;
 
 const EMPTY_COUNTS = (): Record<SpeciesKind, number> => ({ herbivore: 0, carnivore: 0 });
 const KINDS: readonly SpeciesKind[] = ["herbivore", "carnivore"];
@@ -176,13 +236,15 @@ export class World {
     tick = 0;
     turn = 0;
 
-    private readonly grid = new SpatialGrid<Entity>(10);
-    private readonly plantGrid = new SpatialGrid<Plant>(10);
-    private readonly carrionGrid = new SpatialGrid<Carrion>(10);
+    private readonly grid = new SpatialGrid<Entity>(10, (entity) => entity.pos);
+    private readonly plantGrid = new SpatialGrid<Plant>(10, (plant) => plant);
+    private readonly carrionGrid = new SpatialGrid<Carrion>(10, (carrion) => carrion);
     readonly lifeGrid: LifeGrid;
     private nextId = 1;
     private births: Record<SpeciesKind, number> = EMPTY_COUNTS();
     private deaths: Record<SpeciesKind, number> = EMPTY_COUNTS();
+    private sexualBirthTotal = 0;
+    private asexualBirthTotal = 0;
     /** Ancestry of every entity ever spawned, so kinship outlives the dead. */
     private readonly lineage = createLineage();
     private carrionMeals = 0;
@@ -246,15 +308,77 @@ export class World {
         };
     }
 
+    /**
+     * Where a new plant appears.
+     *
+     * Vegetation grows from vegetation: a plant usually comes up a short
+     * distance from an existing one, so grass forms patches with real gaps
+     * between them. A minority of plants colonise open ground anywhere, which
+     * is what lets a patch that has been grazed to nothing come back.
+     *
+     * With `plantSpread` at 0 every plant is placed independently, which is the
+     * uniform sprinkle the world used to have — kept as a setting so the two
+     * can be compared rather than argued about.
+     */
+    private plantPosition(): { x: number; y: number } {
+        const spread = this.config.plantSpread ?? 0;
+        const spacing = this.config.plantSpacing ?? 0;
+        if (spread <= 0 || this.plants.length === 0) return this.randomPos();
+        if (this.rng() < (this.config.plantColoniseChance ?? 0)) return this.randomPos();
+        for (let attempt = 0; attempt < PLANT_SPROUT_ATTEMPTS; attempt++) {
+            const parent = pick(this.rng, this.plants);
+            const angle = randRange(this.rng, 0, Math.PI * 2);
+            const reach = randRange(this.rng, 0, spread);
+            const spot = this.clampPos({
+                x: parent.x + Math.cos(angle) * reach,
+                y: parent.y + Math.sin(angle) * reach,
+            });
+            if (this.plantsNear(spot, spacing) === 0) return spot;
+        }
+        // Every spot near a parent is taken, so this one travels: a patch that
+        // has filled up seeds the ground around it instead of packing itself
+        // tighter.
+        //
+        // Landing it anywhere at all measured *better* here than steering it
+        // towards open ground, which is worth recording because the reverse
+        // looks obvious. Aiming travellers at empty space flattened the
+        // production field (dispersion 11.9 -> 5.9), weakened the gradient a
+        // forager could learn (best-patch persistence 1.44x -> 1.23x) and cost
+        // the desert its carnivores, while an unsentimental uniform landing
+        // kept patches sharp by occasionally dropping a seed back into one.
+        return this.randomPos();
+    }
+
+    /** How many living plants stand within `radius` of a spot. */
+    private plantsNear(spot: { x: number; y: number }, radius: number): number {
+        if (radius <= 0) return 0;
+        const near: Plant[] = [];
+        this.plantGrid.query(spot.x, spot.y, radius, near);
+        let count = 0;
+        for (const plant of near) {
+            if (plant.alive) count++;
+        }
+        return count;
+    }
+
     private spawnPlant(): void {
-        const pos = this.randomPos();
-        this.plants.push({
+        const pos = this.plantPosition();
+        const plant: Plant = {
             id: this.nextId++,
             x: pos.x,
             y: pos.y,
             energy: this.plantParams.energy,
             alive: true,
-        });
+        };
+        this.plants.push(plant);
+        // Filed the moment it grows, alongside the tick's rebuild that re-files
+        // every plant. Dispersal has to see the plants that are already
+        // standing: a seed can sprout beside one that appeared earlier in this
+        // same tick's regrowth, and filing it only at the rebuild would let the
+        // spacing check miss that neighbour and pack a saturated patch tighter
+        // than plantSpacing allows. The rebuild clears before it refills, so
+        // the plant is never in the grid twice.
+        this.plantGrid.insert(plant);
     }
 
     private spawnEntity(
@@ -421,15 +545,15 @@ export class World {
     private rebuildIndexes(): void {
         this.grid.clear();
         for (const e of this.entities) {
-            if (e.alive) this.grid.insert(e.pos.x, e.pos.y, e);
+            if (e.alive) this.grid.insert(e);
         }
         this.plantGrid.clear();
         for (const p of this.plants) {
-            if (p.alive) this.plantGrid.insert(p.x, p.y, p);
+            if (p.alive) this.plantGrid.insert(p);
         }
         this.carrionGrid.clear();
         for (const c of this.carrions) {
-            if (c.alive) this.carrionGrid.insert(c.x, c.y, c);
+            if (c.alive) this.carrionGrid.insert(c);
         }
     }
 
@@ -752,15 +876,23 @@ export class World {
         }
         if (alive >= this.config.populationCap) return;
 
-        // Prefer sexual reproduction with a nearby eligible mate; fall back
-        // to asexual cloning so lone survivors can still propagate.
-        const mate = this.findMate(e);
+        const mode = this.config.reproduction ?? "asexual";
+        // Asexual never looks for a partner at all, so it cannot accidentally
+        // become sexual when one happens to be standing nearby.
+        const mate = mode === "sexual" ? this.findMate(e) : null;
+        // Sexual without a partner is not a birth: the animal waits, keeping
+        // its energy and its cooldown clear, and tries again next tick. There
+        // is deliberately no clone fallback — that is the whole difference
+        // between the two modes.
+        if (mode === "sexual" && mate === null) return;
         // Newborns start well below the breeding threshold: they must eat
         // before they can reproduce, which tempers exponential booms.
         const childEnergy = s.reproduceEnergy * 0.25;
         const generation = mate
             ? Math.max(e.generation, mate.generation) + 1
             : e.generation + 1;
+        // Every birth in sexual mode has a partner, and every birth in asexual
+        // mode is a clone, so the two cases cannot blur.
         for (let i = 0; i < s.litterSize; i++) {
             this.spawnEntity(s, generation, e, mate ?? undefined, childEnergy);
         }
@@ -768,8 +900,10 @@ export class World {
             e.energy -= s.reproduceCost / 2;
             mate.energy -= s.reproduceCost / 2;
             mate.reproduceCooldown = REPRODUCE_COOLDOWN;
+            this.sexualBirthTotal += s.litterSize;
         } else {
             e.energy -= s.reproduceCost;
+            this.asexualBirthTotal += s.litterSize;
         }
         e.reproduceCooldown = REPRODUCE_COOLDOWN;
         this.births[s.kind] += s.litterSize;
@@ -931,6 +1065,23 @@ export class World {
     /** The species whose extinction ended the run, or null while it continues. */
     get gameOver(): SpeciesKind | null {
         return this.gameOverBy;
+    }
+
+    /**
+     * Cumulative births made with a partner, and by cloning.
+     *
+     * Not shown anywhere: the mode is locked at seeding and the two are meant
+     * to be mutually exclusive (a sexual run makes no clones at all, and an
+     * asexual run never mates), so a display of the split would only restate a
+     * setting the player already chose. They exist so the tests can hold that
+     * exclusivity to account rather than assuming it.
+     */
+    get sexualBirths(): number {
+        return this.sexualBirthTotal;
+    }
+
+    get asexualBirths(): number {
+        return this.asexualBirthTotal;
     }
 
     /** Lifetime count of corpses eaten by carnivores. */
