@@ -125,12 +125,12 @@ export function createHud(container: HTMLElement): Hud {
             // replayed point instead: history up to the frame's tick and the
             // season position the frame carries.
             const records = replay
-                ? world.records.filter((r) => r.tick <= replay.tick)
+                ? world.records.filter((recordItem) => recordItem.tick <= replay.tick)
                 : world.records;
             const record = records.at(-1);
             const herb = replay ? replay.populations.herbivore : world.populationOf("herbivore");
             const carn = replay ? replay.populations.carnivore : world.populationOf("carnivore");
-            const plantCount = replay ? replay.populations.plants : world.plants.filter((p) => p.alive).length;
+            const plantCount = replay ? replay.populations.plants : world.plants.filter((plantItem) => plantItem.alive).length;
 
             const seasonLen = world.config.plantSeasonLength ?? 0;
             const seasonDepth = world.config.plantSeasonDepth ?? 0.5;
@@ -169,16 +169,16 @@ export function createHud(container: HTMLElement): Hud {
             }
 
             if (records.length > 1) {
-                lineHerbEl.setAttribute("points", seriesPoints(records, (r) => r.populations.herbivore));
-                lineCarnEl.setAttribute("points", seriesPoints(records, (r) => r.populations.carnivore));
-                linePlantEl.setAttribute("points", seriesPoints(records, (r) => r.plantCount));
+                lineHerbEl.setAttribute("points", seriesPoints(records, (rec) => rec.populations.herbivore));
+                lineCarnEl.setAttribute("points", seriesPoints(records, (rec) => rec.populations.carnivore));
+                linePlantEl.setAttribute("points", seriesPoints(records, (rec) => rec.plantCount));
                 if (seasonLen > 0) {
                     // The season curve: where in the cycle each snapshot sat
                     // (0 = trough, 1 = peak), pinned to fill the chart. In a
                     // replay it ends at the scrubbed tick, not the live one.
                     lineSeasonEl.setAttribute(
                         "points",
-                        seriesPoints(records, (r) => seasonAbundanceAt(r.tick, seasonLen, seasonDepth), 1),
+                        seriesPoints(records, (rec) => seasonAbundanceAt(rec.tick, seasonLen, seasonDepth), 1),
                     );
                 } else {
                     lineSeasonEl.setAttribute("points", "");

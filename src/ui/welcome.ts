@@ -16,11 +16,11 @@ export function createWelcome(
     el.id = "welcome";
     const eraCards = eras
         .map(
-            (e) => `
-            <button class="era-card" data-era="${e.name}">
-                <span class="era-swatch" style="background:#${e.groundColor.toString(16).padStart(6, "0")}"></span>
-                <span class="era-name">${e.name}</span>
-                <span class="era-desc">${eraDescription(e)}</span>
+            (eraItem) => `
+            <button class="era-card" data-era="${eraItem.name}">
+                <span class="era-swatch" style="background:#${eraItem.groundColor.toString(16).padStart(6, "0")}"></span>
+                <span class="era-name">${eraItem.name}</span>
+                <span class="era-desc">${eraDescription(eraItem)}</span>
             </button>
         `,
         )
@@ -48,20 +48,25 @@ export function createWelcome(
     if (cards[0]) cards[0].classList.add("era-selected");
     for (const card of cards) {
         card.addEventListener("click", () => {
-            const name = card.dataset!.era!;
-            selectedEra = eras.find((e) => e.name === name) ?? eras[0];
-            for (const c of cards) c.classList.toggle("era-selected", c === card);
+            const eraName = card.dataset.era;
+            if (eraName) {
+                selectedEra = eras.find((eraItem) => eraItem.name === eraName) ?? eras[0];
+                for (const cardItem of cards) cardItem.classList.toggle("era-selected", cardItem === card);
+            }
         });
     }
 
-    el.querySelector<HTMLButtonElement>("#welcome-start")!.addEventListener("click", () => {
-        el.hidden = true;
-        onStart(selectedEra);
-    });
+    const startButton = el.querySelector<HTMLButtonElement>("#welcome-start");
+    if (startButton) {
+        startButton.addEventListener("click", () => {
+            el.hidden = true;
+            onStart(selectedEra);
+        });
+    }
 
     // Also dismiss on any key (Enter/Space starts with current era selection)
-    const dismiss = (e: KeyboardEvent) => {
-        if (e.key === "Enter" || e.key === " ") {
+    const dismiss = (event: KeyboardEvent) => {
+        if (event.key === "Enter" || event.key === " ") {
             el.hidden = true;
             onStart(selectedEra);
             window.removeEventListener("keydown", dismiss);
