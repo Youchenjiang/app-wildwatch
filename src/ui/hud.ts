@@ -99,7 +99,7 @@ export function createHud(container: HTMLElement): Hud {
     `;
     container.appendChild(overEl);
 
-    const q = <T extends Element>(sel: string): T => {
+    const queryHud = <T extends Element>(sel: string): T => {
         const found = el.querySelector<T>(sel);
         if (!found) throw new Error(`Missing HUD element: ${sel}`);
         return found;
@@ -107,25 +107,25 @@ export function createHud(container: HTMLElement): Hud {
     // The game-over veil is a sibling of the HUD, so its own children are
     // queried within overEl — querying the HUD would return null and crash
     // the frame loop the moment a run ends.
-    const qOver = <T extends Element>(sel: string): T => {
+    const queryOver = <T extends Element>(sel: string): T => {
         const found = overEl.querySelector<T>(sel);
         if (!found) throw new Error(`Missing HUD element: ${sel}`);
         return found;
     };
-    const stateEl = q("#hud-state");
-    const turnEl = q("#hud-turn");
-    const popHerbEl = q("#pop-herb");
-    const popCarnEl = q("#pop-carn");
-    const barHerbEl = q<HTMLElement>("#bar-herb");
-    const barCarnEl = q<HTMLElement>("#bar-carn");
-    const metaHerbEl = q("#meta-herb");
-    const metaCarnEl = q("#meta-carn");
-    const lineHerbEl = q("#line-herb");
-    const lineCarnEl = q("#line-carn");
-    const linePlantEl = q("#line-plant");
-    const lineSeasonEl = q("#line-season");
-    const overTitleEl = qOver("#over-title");
-    const overSubEl = qOver("#over-sub");
+    const stateEl = queryHud("#hud-state");
+    const turnEl = queryHud("#hud-turn");
+    const popHerbEl = queryHud("#pop-herb");
+    const popCarnEl = queryHud("#pop-carn");
+    const barHerbEl = queryHud<HTMLElement>("#bar-herb");
+    const barCarnEl = queryHud<HTMLElement>("#bar-carn");
+    const metaHerbEl = queryHud("#meta-herb");
+    const metaCarnEl = queryHud("#meta-carn");
+    const lineHerbEl = queryHud("#line-herb");
+    const lineCarnEl = queryHud("#line-carn");
+    const linePlantEl = queryHud("#line-plant");
+    const lineSeasonEl = queryHud("#line-season");
+    const overTitleEl = queryOver("#over-title");
+    const overSubEl = queryOver("#over-sub");
 
     return {
         update(world: World, paused: boolean, replay?: ReplayFrame): void {
