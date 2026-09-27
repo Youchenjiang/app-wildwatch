@@ -31,6 +31,20 @@ const KIN_COLOR = "#e08fb0";
  * usually wandered off, so in practice the forebear side carries almost all of
  * it. Showing one blended number would hide that.
  */
+function formatKinSides(
+    kinMeals: number,
+    kinAncestorMeals: number,
+    kinDescendantMeals: number,
+): string {
+    if (kinMeals <= 0 || kinAncestorMeals + kinDescendantMeals !== kinMeals) {
+        return "";
+    }
+    if (kinDescendantMeals === 0) {
+        return "（全為親代）";
+    }
+    return `（親代 ${kinAncestorMeals} · 子代 ${kinDescendantMeals}）`;
+}
+
 export function kinStatText(
     carrionMeals: number,
     kinMeals: number,
@@ -42,12 +56,7 @@ export function kinStatText(
     // Only break the total down when the two sides actually account for it.
     // A caller that passes no split (both zero with meals on the books) gets
     // no claim rather than an invented "all forebears".
-    const sides =
-        kinMeals <= 0 || kinAncestorMeals + kinDescendantMeals !== kinMeals
-            ? ""
-            : kinDescendantMeals === 0
-              ? "（全為親代）"
-              : `（親代 ${kinAncestorMeals} · 子代 ${kinDescendantMeals}）`;
+    const sides = formatKinSides(kinMeals, kinAncestorMeals, kinDescendantMeals);
     return `近親取食 ${kinMeals} · 佔腐食 ${pct}%${sides}`;
 }
 

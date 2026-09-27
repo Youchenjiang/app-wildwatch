@@ -628,67 +628,72 @@ export class World {
     // Eating / reproduction / death
     // ---------------------------------------------------------------------
 
-    private tryEat(e: Entity, inputs: number[], steer: number): void {
-        const s = e.species;
-        if (s.kind === "herbivore") {
-            const found = this.nearest(
-                this.queryPlants(e.pos, s.eatRadius),
-                (p) => p.alive,
-                (p) => p,
-                e.pos,
-            );
-            if (found) {
-                found.item.alive = false;
-                e.energy += found.item.energy;
-                e.fitness += found.item.energy;
-                e.foodEaten++;
-                e.memory.record(inputs, steer, found.item.energy, e.age);
-                e.meals.add({ source: "plant", energy: found.item.energy, age: e.age });
-            }
-            return;
-        }
+    private tryGraze(entity: Entity, inputs: number[], steer: number): void {
+        const species = entity.species;
         const found = this.nearest(
-            this.queryEntities(e.pos, s.eatRadius),
-            (p) => p.alive && p.species.kind === "herbivore",
-            (p) => p.pos,
-            e.pos,
+            this.queryPlants(entity.pos, species.eatRadius),
+            (plant) => plant.alive,
+            (plant) => plant,
+            entity.pos,
         );
         if (found) {
-            // Type-III functional response with a hard prey refuge: when
-            // prey are rare, hunts almost always fail, so predators starve
-            // back before they can finish the prey off. When prey are
-            // abundant, hunts saturate and predators can boom.
-            const preyDensity =
-                this.populationOf("herbivore") / (this.config.width * this.config.height);
-            const scarcity = Math.min(1, preyDensity / PREY_REFUGE_DENSITY);
-            const factor = scarcity * scarcity * scarcity * SATURATION_BONUS + REFUGE_FLOOR;
-            if (this.rng() < CATCH_CHANCE * factor) {
-                const meat = found.item.energy;
-                this.kill(found.item, "preyed");
-                const gained = Math.min(meat * 0.6, s.maxEnergy * 0.5) + s.foodEnergy;
-                e.energy += gained;
-                e.fitness += gained;
-                e.foodEaten++;
-                e.memory.record(inputs, steer, gained, e.age);
-                e.meals.add({
-                    source: "prey",
-                    energy: gained,
-                    age: e.age,
-                    victimId: found.item.id,
-                    victimGeneration: found.item.generation,
-                });
-            }
+            found.item.alive = false;
+            entity.energy += found.item.energy;
+            entity.fitness += found.item.energy;
+            entity.foodEaten++;
+            entity.memory.record(inputs, steer, found.item.energy, entity.age);
+            entity.meals.add({ source: "plant", energy: found.item.energy, age: entity.age });
         }
+    }
+
+    private tryHunt(entity: Entity, inputs: number[], steer: number): void {
+        const species = entity.species;
+        const found = this.nearest(
+            this.queryEntities(entity.pos, species.eatRadius),
+            (target) => target.alive && target.species.kind === "herbivore",
+            (target) => target.pos,
+            entity.pos,
+        );
+        if (!found) return;
+
+        // Type-III functional response with a hard prey refuge: when
+        // prey are rare, hunts almost always fail, so predators starve
+        // back before they can finish the prey off. When prey are
+        // abundant, hunts saturate and predators can boom.
+        const preyDensity =
+            this.populationOf("herbivore") / (this.config.width * this.config.height);
+        const scarcity = Math.min(1, preyDensity / PREY_REFUGE_DENSITY);
+        const factor = scarcity * scarcity * scarcity * SATURATION_BONUS + REFUGE_FLOOR;
+        if (this.rng() < CATCH_CHANCE * factor) {
+            const meat = found.item.energy;
+            this.kill(found.item, "preyed");
+            const gained = Math.min(meat * 0.6, species.maxEnergy * 0.5) + species.foodEnergy;
+            entity.energy += gained;
+            entity.fitness += gained;
+            entity.foodEaten++;
+            entity.memory.record(inputs, steer, gained, entity.age);
+            entity.meals.add({
+                source: "prey",
+                energy: gained,
+                age: entity.age,
+                victimId: found.item.id,
+                victimGeneration: found.item.generation,
+            });
+        }
+    }
+
+    private tryScavenge(entity: Entity, inputs: number[], steer: number): void {
+        const species = entity.species;
         // Scavenging: carrion is free energy with no hunt risk (rule 6).
         const corpses: Carrion[] = [];
-        this.carrionGrid.query(e.pos.x, e.pos.y, s.eatRadius, corpses);
-        for (const c of corpses) {
-            if (!c.alive) continue;
-            const gained = c.energy;
-            c.alive = false;
-            e.energy = Math.min(s.maxEnergy, e.energy + gained);
-            e.fitness += gained;
-            e.foodEaten++;
+        this.carrionGrid.query(entity.pos.x, entity.pos.y, species.eatRadius, corpses);
+        for (const corpse of corpses) {
+            if (!corpse.alive) continue;
+            const gained = corpse.energy;
+            corpse.alive = false;
+            entity.energy = Math.min(species.maxEnergy, entity.energy + gained);
+            entity.fitness += gained;
+            entity.foodEaten++;
             // Kin can only be met here, not in the hunt above: offspring
             // always inherit their parent's species, and a carnivore only
             // ever hunts herbivores. So a predator's relatives are
@@ -698,16 +703,16 @@ export class World {
             // dies leaves a body its offspring may still be standing next
             // to; an offspring that dies has usually wandered off first.
             // Checking only one way quietly reports zero forever.
-            const kin = this.lineage.kinTo(e.id, c.fromId);
-            e.memory.record(inputs, steer, gained, e.age);
+            const kin = this.lineage.kinTo(entity.id, corpse.fromId);
+            entity.memory.record(inputs, steer, gained, entity.age);
             const meal = {
                 source: "carrion" as const,
                 energy: gained,
-                age: e.age,
-                victimId: c.fromId,
-                victimGeneration: c.fromGeneration,
+                age: entity.age,
+                victimId: corpse.fromId,
+                victimGeneration: corpse.fromGeneration,
             };
-            e.meals.add(
+            entity.meals.add(
                 kin === null
                     ? meal
                     : {
@@ -720,11 +725,23 @@ export class World {
             this.carrionMeals++;
             if (kin !== null) {
                 this.kinMeals++;
-                if (kin.side === "ancestor") this.kinAncestorMeals++;
-                else this.kinDescendantMeals++;
+                if (kin.side === "ancestor") {
+                    this.kinAncestorMeals++;
+                } else {
+                    this.kinDescendantMeals++;
+                }
             }
             break;
         }
+    }
+
+    private tryEat(entity: Entity, inputs: number[], steer: number): void {
+        if (entity.species.kind === "herbivore") {
+            this.tryGraze(entity, inputs, steer);
+            return;
+        }
+        this.tryHunt(entity, inputs, steer);
+        this.tryScavenge(entity, inputs, steer);
     }
 
     private reproduce(e: Entity): void {
@@ -825,51 +842,29 @@ export class World {
         return acc / k;
     }
 
-    private recordSnapshot(): void {
-        const record: TurnRecord = {
-            turn: this.turn,
-            tick: this.tick,
-            populations: EMPTY_COUNTS(),
-            avgEnergy: EMPTY_COUNTS(),
-            avgGeneration: EMPTY_COUNTS(),
-            births: { ...this.births },
-            deaths: { ...this.deaths },
-            geneDiversity: EMPTY_COUNTS(),
-            avgFitness: EMPTY_COUNTS(),
-            maxFitness: EMPTY_COUNTS(),
-            plantCount: 0,
-            livingMeanDepth: 0,
-            livingMaxDepth: 0,
-            kinDensity: 0,
-            meanNearestKin: 0,
-            carrionMeals: this.carrionMeals,
-            kinMeals: this.kinMeals,
-            kinAncestorMeals: this.kinAncestorMeals,
-            kinDescendantMeals: this.kinDescendantMeals,
-        };
+    private recordSpeciesMetrics(record: TurnRecord): void {
         for (const kind of KINDS) {
-            const pop = this.entities.filter((e) => e.alive && e.species.kind === kind);
-            record.populations[kind] = pop.length;
-            record.avgEnergy[kind] = pop.length
-                ? pop.reduce((sum, e) => sum + e.energy, 0) / pop.length
+            const pop = this.entities.filter((entity) => entity.alive && entity.species.kind === kind);
+            const count = pop.length;
+            record.populations[kind] = count;
+            record.avgEnergy[kind] = count
+                ? pop.reduce((sum, entity) => sum + entity.energy, 0) / count
                 : 0;
-            record.avgGeneration[kind] = pop.length
-                ? pop.reduce((sum, e) => sum + e.generation, 0) / pop.length
+            record.avgGeneration[kind] = count
+                ? pop.reduce((sum, entity) => sum + entity.generation, 0) / count
                 : 0;
             record.geneDiversity[kind] = this.geneDiversity(kind);
-            record.avgFitness[kind] = pop.length
-                ? pop.reduce((sum, e) => sum + e.fitness, 0) / pop.length
+            record.avgFitness[kind] = count
+                ? pop.reduce((sum, entity) => sum + entity.fitness, 0) / count
                 : 0;
-            record.maxFitness[kind] = pop.length
-                ? Math.max(...pop.map((e) => e.fitness))
+            record.maxFitness[kind] = count
+                ? Math.max(...pop.map((entity) => entity.fitness))
                 : 0;
         }
-        record.plantCount = this.plants.filter((p) => p.alive).length;
+    }
 
-        // Living ancestry: one upward walk per living animal, so this is a
-        // per-turn cost rather than a per-tick one.
-        const living = this.entities.filter((e) => e.alive);
-        const livingIds = new Set(living.map((e) => e.id));
+    private recordLivingAncestry(record: TurnRecord, living: readonly Entity[]): void {
+        const livingIds = new Set(living.map((entity) => entity.id));
         let depthSum = 0;
         let withKin = 0;
         let kinGapSum = 0;
@@ -887,6 +882,33 @@ export class World {
         record.livingMeanDepth = living.length ? depthSum / living.length : 0;
         record.kinDensity = living.length ? withKin / living.length : 0;
         record.meanNearestKin = withKin ? kinGapSum / withKin : 0;
+    }
+
+    private recordSnapshot(): void {
+        const living = this.entities.filter((entity) => entity.alive);
+        const record: TurnRecord = {
+            turn: this.turn,
+            tick: this.tick,
+            populations: EMPTY_COUNTS(),
+            avgEnergy: EMPTY_COUNTS(),
+            avgGeneration: EMPTY_COUNTS(),
+            births: { ...this.births },
+            deaths: { ...this.deaths },
+            geneDiversity: EMPTY_COUNTS(),
+            avgFitness: EMPTY_COUNTS(),
+            maxFitness: EMPTY_COUNTS(),
+            plantCount: this.plants.filter((plant) => plant.alive).length,
+            livingMeanDepth: 0,
+            livingMaxDepth: 0,
+            kinDensity: 0,
+            meanNearestKin: 0,
+            carrionMeals: this.carrionMeals,
+            kinMeals: this.kinMeals,
+            kinAncestorMeals: this.kinAncestorMeals,
+            kinDescendantMeals: this.kinDescendantMeals,
+        };
+        this.recordSpeciesMetrics(record);
+        this.recordLivingAncestry(record, living);
 
         this.records.push(record);
         this.turn++;

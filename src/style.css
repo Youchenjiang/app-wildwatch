@@ -220,21 +220,22 @@ body {
     padding: 1px 6px;
     border: 1px solid rgba(130, 170, 140, 0.25);
     border-radius: 3px;
-    background: transparent;
-    color: #6d8a7a;
+    background: #0f1812;
+    color: #8faea0;
     font-family: inherit;
     font-size: 9px;
     cursor: pointer;
 }
 
 #hud .hud-chart-tabs button:hover {
-    color: #a8c4b4;
+    color: #c0ded0;
+    background: #142219;
 }
 
 #hud .hud-chart-tabs button.on {
     border-color: rgba(130, 170, 140, 0.5);
-    background: rgba(90, 150, 110, 0.18);
-    color: #cfe3d6;
+    background: #1d3324;
+    color: #e4f2ea;
 }
 
 #hud .hud-chart-legend b {
