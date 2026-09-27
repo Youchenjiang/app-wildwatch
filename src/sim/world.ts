@@ -159,6 +159,9 @@ export class World {
     private plantRegrowAccum = 0;
     /** Set once either species has died out; the run is over (rules forbid re-seeding). */
     private gameOverBy: SpeciesKind | null = null;
+    readonly herbSpecies: SpeciesParams;
+    readonly carnSpecies: SpeciesParams;
+    readonly plantParams: { regrowPerTick: number; energy: number; maxPlants: number };
 
     constructor(config: WorldConfig) {
         this.config = config;
@@ -182,9 +185,9 @@ export class World {
             era?.plants ?? {},
         );
         // Store resolved params so spawnEntity/reproduce can read them back.
-        (this as any)._herbSpecies = herb;
-        (this as any)._carnSpecies = carn;
-        (this as any)._plantParams = plant;
+        this.herbSpecies = herb;
+        this.carnSpecies = carn;
+        this.plantParams = plant;
         for (let i = 0; i < config.herbivoreCount; i++) {
             this.spawnEntity(herb, 0, undefined, undefined, undefined, createMemory(memCap));
         }
@@ -213,7 +216,7 @@ export class World {
             id: this.nextId++,
             x: pos.x,
             y: pos.y,
-            energy: (this as any)._plantParams.energy,
+            energy: this.plantParams.energy,
             alive: true,
         });
     }
@@ -314,9 +317,9 @@ export class World {
         const seasonLength = this.config.plantSeasonLength ?? 0;
         const seasonDepth = this.config.plantSeasonDepth ?? 0.5;
         this.plantRegrowAccum +=
-            (this as any)._plantParams.regrowPerTick * seasonalRegrowMultiplier(this.tick, seasonLength, seasonDepth);
+            this.plantParams.regrowPerTick * seasonalRegrowMultiplier(this.tick, seasonLength, seasonDepth);
         while (this.plantRegrowAccum >= 1) {
-            if (this.plants.length >= (this as any)._plantParams.maxPlants) {
+            if (this.plants.length >= this.plantParams.maxPlants) {
                 this.plantRegrowAccum = 0;
                 break;
             }
