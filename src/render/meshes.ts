@@ -1171,7 +1171,7 @@ export class MeshPool {
         const hits = raycaster.intersectObjects(meshes, true);
         for (const hit of hits) {
             for (let node: THREE.Object3D | null = hit.object; node; node = node.parent) {
-                const found = this.pickList.find((p) => p.mesh === node);
+                const found = this.pickList.find((entry) => entry.mesh === node);
                 if (found) return found.id;
             }
         }

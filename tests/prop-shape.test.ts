@@ -27,7 +27,7 @@ const SPECIES: SpeciesKind[] = ["herbivore", "carnivore"];
 /** Bounding box of a geometry in its own frame. */
 function extents(geometry: THREE.BufferGeometry) {
     geometry.computeBoundingBox();
-    const box = geometry.boundingBox!;
+    const box = geometry.boundingBox ?? new THREE.Box3();
     return {
         width: box.max.x - box.min.x,
         height: box.max.y - box.min.y,
@@ -82,11 +82,11 @@ describe("corpse silhouette", () => {
         // smooth mound would have none.
         const position = corpse.attributes.position;
         const along: number[] = [];
-        for (let i = 0; i < position.count; i++) {
-            if (position.getY(i) > slab[1] * 2) along.push(position.getZ(i));
+        for (let idx = 0; idx < position.count; idx++) {
+            if (position.getY(idx) > slab[1] * 2) along.push(position.getZ(idx));
         }
         expect(along.length, "nothing rises above the slab").toBeGreaterThan(0);
-        const bins = new Set(along.map((z) => Math.round((z + ribs.span) / (ribs.span / 2))));
+        const bins = new Set(along.map((zCoord) => Math.round((zCoord + ribs.span) / (ribs.span / 2))));
         expect(bins.size, "the ridge is one lump, not a spine").toBeGreaterThanOrEqual(ribs.count);
     });
 
@@ -119,20 +119,20 @@ describe("plant silhouette", () => {
         const position = plant.attributes.position;
         // Only the part above the stump: that is where the blades separate.
         const bins = new Set<number>();
-        for (let i = 0; i < position.count; i++) {
-            if (position.getY(i) <= PLANT_SHAPE.stumpHeight) continue;
-            const angle = Math.atan2(position.getX(i), position.getZ(i));
+        for (let idx = 0; idx < position.count; idx++) {
+            if (position.getY(idx) <= PLANT_SHAPE.stumpHeight) continue;
+            const angle = Math.atan2(position.getX(idx), position.getZ(idx));
             // Half-bin offset, so a blade pointing straight down an axis is not
             // split across two bins and counted twice.
             const bin = Math.floor(((angle + Math.PI + Math.PI / 24) / (Math.PI * 2)) * 24) % 24;
             bins.add(bin);
         }
-        const sorted = [...bins].sort((a, b) => a - b);
+        const sorted = [...bins].sort((valA, valB) => valA - valB);
         // A cone's vertices sweep every direction; a tuft's blades each sit in
         // their own wedge, with empty wedges between them.
         let wedges = sorted.length > 0 ? 1 : 0;
-        for (let i = 1; i < sorted.length; i++) {
-            if (sorted[i] !== sorted[i - 1] + 1) wedges++;
+        for (let step = 1; step < sorted.length; step++) {
+            if (sorted[step] !== sorted[step - 1] + 1) wedges++;
         }
         expect(wedges, "the blades do not separate around the stem").toBeGreaterThanOrEqual(
             PLANT_SHAPE.blades,
@@ -151,9 +151,9 @@ describe("props as drawn", () => {
             expect(color, "the materials multiply vertex colours").toBeTruthy();
             let min = Infinity;
             let max = -Infinity;
-            for (let i = 0; i < color.count; i++) {
-                min = Math.min(min, color.getX(i));
-                max = Math.max(max, color.getX(i));
+            for (let idx = 0; idx < color.count; idx++) {
+                min = Math.min(min, color.getX(idx));
+                max = Math.max(max, color.getX(idx));
             }
             expect(max - min, "one flat tint would flatten the parts together").toBeGreaterThan(0.1);
         }

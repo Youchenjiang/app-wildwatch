@@ -29,7 +29,8 @@ function snoutTip(geometry: THREE.BufferGeometry): THREE.Vector3 {
  * it.
  */
 function drawnSnout(pool: MeshPool, entity: Entity): { x: number; z: number; length: number } {
-    const mesh = pool["npcMeshes"].get(entity.id)!;
+    const mesh = pool["npcMeshes"].get(entity.id);
+    if (!mesh) throw new Error(`mesh not found for entity ${entity.id}`);
     mesh.updateMatrixWorld(true);
     const rig = mesh.children[0] as THREE.Mesh;
     const tip = snoutTip(rig.geometry).applyMatrix4(rig.matrixWorld).sub(mesh.position);
@@ -45,31 +46,31 @@ describe("rendered heading", () => {
         // agree only when an animal happens to be heading along a diagonal.
         const world = new World(makeSeeding(20260907));
         const pool = new MeshPool(new THREE.Scene());
-        for (let i = 0; i < 200; i++) world.tickStep();
+        for (let idx = 0; idx < 200; idx++) world.tickStep();
 
         const before = new Map<number, { x: number; y: number }>(
-            world.entities.map((e) => [e.id, { x: e.pos.x, y: e.pos.y }]),
+            world.entities.map((entity) => [entity.id, { x: entity.pos.x, y: entity.pos.y }]),
         );
         world.tickStep();
         pool.sync(world);
 
         let checked = 0;
         let bounced = 0;
-        for (const e of world.entities) {
-            const from = before.get(e.id);
-            if (!e.alive || !from) continue;
-            const travelled = Math.hypot(e.pos.x - from.x, e.pos.y - from.y);
+        for (const entity of world.entities) {
+            const from = before.get(entity.id);
+            if (!entity.alive || !from) continue;
+            const travelled = Math.hypot(entity.pos.x - from.x, entity.pos.y - from.y);
             if (travelled < 0.5) continue; // standing still: nothing to compare
             // Hitting a wall re-aims the animal after it has already moved
             // (rule 7), so travel and heading legitimately disagree there.
-            const headX = Math.cos(e.angle);
-            const headY = Math.sin(e.angle);
-            if ((headX * (e.pos.x - from.x) + headY * (e.pos.y - from.y)) / travelled < 0.99) {
+            const headX = Math.cos(entity.angle);
+            const headY = Math.sin(entity.angle);
+            if ((headX * (entity.pos.x - from.x) + headY * (entity.pos.y - from.y)) / travelled < 0.99) {
                 bounced++;
                 continue;
             }
 
-            const snout = drawnSnout(pool, e);
+            const snout = drawnSnout(pool, entity);
             expect(snout.length, "the animal lost its snout").toBeGreaterThan(0.3);
             expect(snout.x / snout.length).toBeCloseTo(headX, 6);
             expect(snout.z / snout.length).toBeCloseTo(headY, 6);
@@ -85,19 +86,19 @@ describe("rendered heading", () => {
         // must show the same animal facing the same way.
         const world = new World(makeSeeding(20260907));
         const pool = new MeshPool(new THREE.Scene());
-        for (let i = 0; i < 200; i++) world.tickStep();
-        const living = world.entities.filter((e) => e.alive).slice(0, 20);
+        for (let idx = 0; idx < 200; idx++) world.tickStep();
+        const living = world.entities.filter((entity) => entity.alive).slice(0, 20);
         const frame: ReplayFrame = {
             tick: world.tick,
             turn: world.turn,
-            entities: living.map((e) => [
-                e.id,
-                e.species.kind === "herbivore" ? 0 : 1,
-                e.pos.x,
-                e.pos.y,
-                e.angle,
+            entities: living.map((entity) => [
+                entity.id,
+                entity.species.kind === "herbivore" ? 0 : 1,
+                entity.pos.x,
+                entity.pos.y,
+                entity.angle,
                 0.5,
-                e.generation,
+                entity.generation,
             ]),
             plants: [],
             carrions: [],
@@ -105,11 +106,11 @@ describe("rendered heading", () => {
             seasonAbundance: null,
         };
         pool.syncFrame(frame);
-        for (const e of living) {
-            const snout = drawnSnout(pool, e);
+        for (const entity of living) {
+            const snout = drawnSnout(pool, entity);
             expect(snout.length, "the replayed animal lost its snout").toBeGreaterThan(0.3);
-            expect(snout.x / snout.length).toBeCloseTo(Math.cos(e.angle), 6);
-            expect(snout.z / snout.length).toBeCloseTo(Math.sin(e.angle), 6);
+            expect(snout.x / snout.length).toBeCloseTo(Math.cos(entity.angle), 6);
+            expect(snout.z / snout.length).toBeCloseTo(Math.sin(entity.angle), 6);
         }
     });
 });

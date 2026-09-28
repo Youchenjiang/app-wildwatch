@@ -32,14 +32,19 @@ function timeForWave(id: number, sign: 1 | -1): number {
 /** Bounding box of a geometry in its own frame. */
 function localBox(geometry: THREE.BufferGeometry): THREE.Box3 {
     geometry.computeBoundingBox();
-    return geometry.boundingBox!.clone();
+    const box = geometry.boundingBox;
+    return box ? box.clone() : new THREE.Box3();
 }
 
 /** The three scales a mesh is actually drawn at, read off its world matrix. */
 function drawnScales(mesh: THREE.Object3D): [number, number, number] {
     mesh.updateWorldMatrix(true, false);
-    const m = mesh.matrixWorld.elements;
-    return [Math.hypot(m[0], m[1], m[2]), Math.hypot(m[4], m[5], m[6]), Math.hypot(m[8], m[9], m[10])];
+    const elements = mesh.matrixWorld.elements;
+    return [
+        Math.hypot(elements[0], elements[1], elements[2]),
+        Math.hypot(elements[4], elements[5], elements[6]),
+        Math.hypot(elements[8], elements[9], elements[10]),
+    ];
 }
 
 /** The world-space size of a mesh's own geometry: what the player sees. */
@@ -48,8 +53,8 @@ function drawnSize(mesh: THREE.Mesh): THREE.Vector3 {
     const position = mesh.geometry.attributes.position;
     const point = new THREE.Vector3();
     const box = new THREE.Box3();
-    for (let i = 0; i < position.count; i++) {
-        box.expandByPoint(point.fromBufferAttribute(position, i).applyMatrix4(mesh.matrixWorld));
+    for (let idx = 0; idx < position.count; idx++) {
+        box.expandByPoint(point.fromBufferAttribute(position, idx).applyMatrix4(mesh.matrixWorld));
     }
     return box.getSize(new THREE.Vector3());
 }
@@ -62,12 +67,13 @@ function bodyScale(entity: { energy: number; species: { maxEnergy: number } }): 
 /** One live animal of the given species, with a pool drawing it. */
 function subjectOf(kind: SpeciesKind) {
     const world = new World(makeSeeding(7));
-    const subject = world.entities.find((e) => e.alive && e.species.kind === kind);
+    const subject = world.entities.find((entity) => entity.alive && entity.species.kind === kind);
     expect(subject, `no live ${kind} to draw`).toBeTruthy();
+    if (!subject) throw new Error(`no live ${kind} to draw`);
     const pool = new MeshPool(new THREE.Scene());
-    const animal = (): THREE.Mesh => pool["npcMeshes"].get(subject!.id) as THREE.Mesh;
+    const animal = (): THREE.Mesh => pool["npcMeshes"].get(subject.id) as THREE.Mesh;
     const rig = (): THREE.Mesh => animal().children[0] as THREE.Mesh;
-    return { world, subject: subject!, pool, animal, rig };
+    return { world, subject, pool, animal, rig };
 }
 
 describe("the body strides", () => {

@@ -11,8 +11,8 @@ import {
 describe("animal gait", () => {
     it("deforms nothing when the animal is not striding", () => {
         for (const wave of [-1, -0.5, 0, 0.5, 1]) {
-            const d = gaitDeform(0, wave);
-            expect([d.x, d.y, d.z]).toEqual([1, 1, 1]);
+            const deform = gaitDeform(0, wave);
+            expect([deform.x, deform.y, deform.z]).toEqual([1, 1, 1]);
         }
         // Nor at the top and bottom of the wave, where the deform crosses zero.
         expect(gaitDeform(1, 0)).toEqual({ x: 1, y: 1, z: 1 });
@@ -21,11 +21,11 @@ describe("animal gait", () => {
     it("is the shape the body's pose is built from", () => {
         for (const base of [0.5, 1, 2]) {
             for (const wave of [-1, -0.3, 0, 0.4, 1]) {
-                const d = gaitDeform(1, wave);
-                const p = gaitPose(base, 1, wave);
-                expect(p.sx).toBeCloseTo(base * d.x, 12);
-                expect(p.sy).toBeCloseTo(base * d.y, 12);
-                expect(p.sz).toBeCloseTo(base * d.z, 12);
+                const deform = gaitDeform(1, wave);
+                const pose = gaitPose(base, 1, wave);
+                expect(pose.sx).toBeCloseTo(base * deform.x, 12);
+                expect(pose.sy).toBeCloseTo(base * deform.y, 12);
+                expect(pose.sz).toBeCloseTo(base * deform.z, 12);
             }
         }
     });
@@ -37,9 +37,9 @@ describe("animal gait", () => {
         const base = 1.4;
         for (const gait of [0, 0.4, 1]) {
             for (const wave of [-1, -0.4, 0, 0.6, 1]) {
-                const d = gaitDeform(gait, wave);
+                const deform = gaitDeform(gait, wave);
                 const body = gaitPose(base, gait, wave);
-                const rig = { x: 1 / d.x, y: 1 / d.y, z: 1 / d.z };
+                const rig = { x: 1 / deform.x, y: 1 / deform.y, z: 1 / deform.z };
                 expect(body.sx * rig.x, "across").toBeCloseTo(base, 12);
                 expect(body.sy * rig.y, "up").toBeCloseTo(base, 12);
                 expect(body.sz * rig.z, "along").toBeCloseTo(base, 12);
