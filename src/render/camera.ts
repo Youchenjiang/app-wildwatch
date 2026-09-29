@@ -1,10 +1,28 @@
 import * as THREE from "three";
 
 /**
- * Observer camera for an orthographic god view: wheel zoom toward the
- * pointer, drag to pan, optional follow of a selected entity, reset to the
- * default framing. Purely visual — never touches the simulation.
+ * Observer camera for an orthographic god view: wheel zoom, drag to pan,
+ * optional follow of a selected entity, reset to the default framing. Purely
+ * visual — never touches the simulation.
+ *
+ * `viewState` and `screenPoint` exist so something outside the app (the
+ * browser harness in `tests/browser.test.ts`, or the console) can see what the
+ * camera did and aim a real pointer at a specific animal.
  */
+export interface ObserverViewState {
+    /** Zoom factor, 1 = the whole-world framing the context was created with. */
+    zoom: number;
+    /** Pan offset from the world centre, in world units. */
+    panX: number;
+    panZ: number;
+    /** Id of the entity the camera is tracking, or null. */
+    following: number | null;
+    dragging: boolean;
+    /** Half-height of the view in world units: smaller means closer in. */
+    halfHeight: number;
+    /** Viewport aspect ratio the camera currently assumes (width / height). */
+    aspect: number;
+}
 export class ObserverCamera {
     private readonly camera: THREE.OrthographicCamera;
     private readonly dom: HTMLElement;
@@ -36,7 +54,9 @@ export class ObserverCamera {
     private attach(): void {
         const onWheel = (event: WheelEvent): void => {
             event.preventDefault();
-            const factor = event.deltaY > 0 ? 1.12 : 1 / 1.12;
+            // Scroll up (negative deltaY) pulls the view closer, scroll down
+            // pushes it away — the direction every map and canvas tool uses.
+            const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
             this.setZoom(this.zoomFactor * factor);
         };
         const onDown = (event: PointerEvent): void => {
@@ -87,6 +107,44 @@ export class ObserverCamera {
 
     getZoom(): number {
         return this.zoomFactor;
+    }
+
+    /** Read-only snapshot of the framing, for tests and the debug console. */
+    viewState(): ObserverViewState {
+        return {
+            zoom: this.zoomFactor,
+            panX: this.panX,
+            panZ: this.panZ,
+            following: this.followId,
+            dragging: this.dragging,
+            halfHeight: (this.camera.top - this.camera.bottom) / 2,
+            aspect: this.camera.right / this.camera.top,
+        };
+    }
+
+    /**
+     * Where a point in the world is drawn, in CSS pixels relative to the
+     * viewport.
+     *
+     * This is the inverse of the pick mapping the app uses for click-to-select:
+     * picking turns a screen point into a ray, and this turns a world position
+     * back into the pixel it lands on. Something driving the page from outside
+     * can only name an entity by id, so without this it has no way to aim a
+     * real click at one. `elevation` is the height above the ground to aim at —
+     * an animal's body sits at about 0.6.
+     */
+    screenPoint(x: number, y: number, elevation = 0): { x: number; y: number } {
+        // The frame loop only sets position/lookAt; the matrices that
+        // `project` reads are refreshed by the renderer's own render, which has
+        // not run yet on the very first frame. Refresh them here so the result
+        // does not depend on when the frame loop last ran.
+        this.camera.updateMatrixWorld();
+        const projected = new THREE.Vector3(x, elevation, y).project(this.camera);
+        const rect = this.dom.getBoundingClientRect();
+        return {
+            x: rect.left + ((projected.x + 1) / 2) * rect.width,
+            y: rect.top + ((1 - projected.y) / 2) * rect.height,
+        };
     }
 
     resetView(): void {

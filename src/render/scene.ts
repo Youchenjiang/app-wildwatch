@@ -5,6 +5,10 @@ export interface RenderContext {
     renderer: THREE.WebGLRenderer;
     scene: THREE.Scene;
     camera: THREE.OrthographicCamera;
+    /** Half-height of the view a fresh context starts with, in world units.
+     * Creation-only: a resize keeps whatever framing the camera has, so this
+     * must not be used to re-derive the rect afterwards (that threw the
+     * observer's zoom away). */
     view: number;
     /** Seasonal mood lighting/colors for the whole biome. */
     atmosphere: Atmosphere;
@@ -214,14 +218,26 @@ export function atmosphereColorsForEra(era: EraConfig): AtmosphereColors {
     };
 }
 
+/**
+ * Fit the context to a new viewport.
+ *
+ * A resize changes the viewport, not the framing: the camera's current vertical
+ * extent is kept and only the horizontal one follows the new aspect ratio. This
+ * used to re-derive the whole rect from the default view, which silently threw
+ * away the observer's zoom — any window resize (or a dev tools or side panel
+ * opening, which resizes the page) snapped a zoomed-in view back to the whole
+ * world. The default view now belongs to creation alone; from then on the
+ * camera's framing is whoever drives the camera.
+ */
 export function resizeContext(ctx: RenderContext, width: number, height: number): void {
     const w = Math.max(1, width);
     const h = Math.max(1, height);
     const aspect = w / h;
-    ctx.camera.left = -ctx.view * aspect;
-    ctx.camera.right = ctx.view * aspect;
-    ctx.camera.top = ctx.view;
-    ctx.camera.bottom = -ctx.view;
+    const halfHeight = (ctx.camera.top - ctx.camera.bottom) / 2;
+    ctx.camera.left = -halfHeight * aspect;
+    ctx.camera.right = halfHeight * aspect;
+    ctx.camera.top = halfHeight;
+    ctx.camera.bottom = -halfHeight;
     ctx.camera.updateProjectionMatrix();
     ctx.renderer.setSize(w, h);
 }

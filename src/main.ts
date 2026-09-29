@@ -227,4 +227,9 @@ function selectEntity(id: number | null): void {
     resetView: () => observerCam.resetView(),
     recorder: () => recorder.stats(),
     restart,
+    // What the observer camera is actually doing, and where a sim position is
+    // drawn: the only way something outside the page (the browser harness)
+    // can check a real gesture's effect and aim one at a specific animal.
+    view: () => observerCam.viewState(),
+    screenPoint: (x: number, y: number) => observerCam.screenPoint(x, y),
 };
