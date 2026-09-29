@@ -139,11 +139,11 @@ export class ObserverCamera {
         // not run yet on the very first frame. Refresh them here so the result
         // does not depend on when the frame loop last ran.
         this.camera.updateMatrixWorld();
-        const p = new THREE.Vector3(x, elevation, y).project(this.camera);
+        const projected = new THREE.Vector3(x, elevation, y).project(this.camera);
         const rect = this.dom.getBoundingClientRect();
         return {
-            x: rect.left + ((p.x + 1) / 2) * rect.width,
-            y: rect.top + ((1 - p.y) / 2) * rect.height,
+            x: rect.left + ((projected.x + 1) / 2) * rect.width,
+            y: rect.top + ((1 - projected.y) / 2) * rect.height,
         };
     }
 

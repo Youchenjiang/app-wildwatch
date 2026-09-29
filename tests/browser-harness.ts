@@ -42,7 +42,7 @@ import { createServer, type ViteDevServer } from "vite";
  * it; adding `@types/node` for the sake of a test harness would push node
  * globals into the type space of an app that runs entirely in a browser.
  */
-const loadBuiltin = async (specifier: string): Promise<unknown> =>
+const loadBuiltin = (specifier: string): Promise<unknown> =>
     import(/* @vite-ignore */ specifier);
 
 interface ChildProcessHandle {
@@ -535,8 +535,11 @@ class BrowserPage implements BrowserSession {
     async drag(from: Point, to: Point, steps = 8, settleMs = 0): Promise<void> {
         await this.pointerDown(from);
         for (let step = 1; step <= steps; step++) {
-            const t = step / steps;
-            await this.pointerMove({ x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t });
+            const progress = step / steps;
+            await this.pointerMove({
+                x: from.x + (to.x - from.x) * progress,
+                y: from.y + (to.y - from.y) * progress,
+            });
         }
         if (settleMs > 0) await delay(settleMs);
         await this.pointerUp(to);

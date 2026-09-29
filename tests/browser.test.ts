@@ -31,25 +31,6 @@ import {
     type Point,
 } from "./browser-harness";
 
-/** What the pageside probes expose. Everything here crosses a JSON bridge. */
-interface Probe {
-    canvasRect(): { left: number; top: number; width: number; height: number; right: number; bottom: number };
-    onCanvas(x: number, y: number): boolean;
-    canvasCentre(): Point | null;
-    canvasMiddle(): Point;
-    animalOnCanvas(minDistanceFromCentre: number): { id: number; x: number; y: number } | null;
-    animalScreenPoint(id: number): Point | null;
-    animalPos(id: number): { x: number; y: number } | null;
-    nudgeAnimal(id: number, dx: number, dy: number): { x: number; y: number } | null;
-    waitFrames(count: number): Promise<number>;
-    inspectorOpen(): boolean;
-    hudState(): string;
-    speedLabel(): string;
-    tick(): number;
-    makeScrollable(): void;
-    restoreScrollable(): void;
-    scrollTop(): number;
-}
 
 /**
  * Page-side probes, injected as a string.
@@ -75,14 +56,14 @@ function installProbe(): void {
     const rect = () => {
         const el = canvasEl();
         if (!el) throw new Error("the app has not created its canvas");
-        const r = el.getBoundingClientRect();
+        const bounds = el.getBoundingClientRect();
         return {
-            left: r.left,
-            top: r.top,
-            width: r.width,
-            height: r.height,
-            right: r.right,
-            bottom: r.bottom,
+            left: bounds.left,
+            top: bounds.top,
+            width: bounds.width,
+            height: bounds.height,
+            right: bounds.right,
+            bottom: bounds.bottom,
         };
     };
     // A gesture has to land on the canvas itself: the observer's listeners are
@@ -90,16 +71,16 @@ function installProbe(): void {
     // would be driving nothing.
     const overCanvas = (x: number, y: number): boolean => {
         const el = document.elementFromPoint(x, y);
-        return !!el && el.tagName === "CANVAS";
+        return el !== null && el.tagName === "CANVAS";
     };
 
     (globalThis as unknown as { __probe?: unknown }).__probe = {
         canvasRect: rect,
         onCanvas: overCanvas,
         canvasCentre(): Point | null {
-            const r = rect();
-            const cx = r.left + r.width / 2;
-            const cy = r.top + r.height / 2;
+            const bounds = rect();
+            const cx = bounds.left + bounds.width / 2;
+            const cy = bounds.top + bounds.height / 2;
             const offsets: Array<[number, number]> = [
                 [0, 0],
                 [0, -90],
@@ -115,46 +96,51 @@ function installProbe(): void {
             return null;
         },
         canvasMiddle(): Point {
-            const r = rect();
-            return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+            const bounds = rect();
+            return { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
         },
         animalOnCanvas(minDistanceFromCentre: number): { id: number; x: number; y: number } | null {
-            const r = rect();
-            const cx = r.left + r.width / 2;
-            const cy = r.top + r.height / 2;
+            const bounds = rect();
+            const cx = bounds.left + bounds.width / 2;
+            const cy = bounds.top + bounds.height / 2;
             let best: { id: number; x: number; y: number; distance: number; rank: number } | null = null;
             for (const entity of globals.world.entities) {
                 if (!entity.alive) continue;
-                const p = globals.__obs.screenPoint(entity.pos.x, entity.pos.y);
-                if (p.x < r.left + 12 || p.y < r.top + 12 || p.x > r.right - 12 || p.y > r.bottom - 12) {
+                const screenPos = globals.__obs.screenPoint(entity.pos.x, entity.pos.y);
+                if (
+                    screenPos.x < bounds.left + 12 ||
+                    screenPos.y < bounds.top + 12 ||
+                    screenPos.x > bounds.right - 12 ||
+                    screenPos.y > bounds.bottom - 12
+                ) {
                     continue;
                 }
-                const distance = Math.hypot(p.x - cx, p.y - cy);
+                const distance = Math.hypot(screenPos.x - cx, screenPos.y - cy);
                 if (distance < minDistanceFromCentre) continue;
-                if (!overCanvas(p.x, p.y)) continue;
+                if (!overCanvas(screenPos.x, screenPos.y)) continue;
                 // Herbivores first: they are the bulk of the population and
                 // far less likely to be eaten while a scenario watches them.
                 const rank = entity.species.kind === "herbivore" ? 0 : 1;
                 if (!best || rank < best.rank || (rank === best.rank && distance < best.distance)) {
-                    best = { id: entity.id, x: p.x, y: p.y, distance, rank };
+                    best = { id: entity.id, x: screenPos.x, y: screenPos.y, distance, rank };
                 }
             }
             return best ? { id: best.id, x: best.x, y: best.y } : null;
         },
         animalScreenPoint(id: number): Point | null {
-            const entity = globals.world.entities.find((e) => e.id === id);
+            const entity = globals.world.entities.find((candidate) => candidate.id === id);
             if (!entity || !entity.alive) return null;
             return globals.__obs.screenPoint(entity.pos.x, entity.pos.y);
         },
         animalPos(id: number): { x: number; y: number } | null {
-            const entity = globals.world.entities.find((e) => e.id === id);
+            const entity = globals.world.entities.find((candidate) => candidate.id === id);
             return entity ? { x: entity.pos.x, y: entity.pos.y } : null;
         },
         // Moves the followed body without letting the simulation decide when it
         // moves, so the camera's tracking can be measured on demand. The spatial
         // index is refiled on the next tick; nothing here depends on that.
         nudgeAnimal(id: number, dx: number, dy: number): { x: number; y: number } | null {
-            const entity = globals.world.entities.find((e) => e.id === id);
+            const entity = globals.world.entities.find((candidate) => candidate.id === id);
             if (!entity || !entity.alive) return null;
             entity.pos.x += dx;
             entity.pos.y += dy;
@@ -173,7 +159,7 @@ function installProbe(): void {
         },
         inspectorOpen(): boolean {
             const el = document.querySelector<HTMLElement>("#inspector");
-            return !!el && !el.hidden;
+            return el !== null && !el.hidden;
         },
         hudState(): string {
             return (document.querySelector("#hud-state")?.textContent ?? "").trim();
@@ -238,7 +224,7 @@ beforeAll(async () => {
     // with the rest of the suite for CPU and the world churns under the
     // scenarios. Step the speed ladder down; every scenario here works at any
     // speed, and the speed keys are exercised properly by the control bar test.
-    for (let i = 0; i < 4; i++) await browser.press("Minus");
+    for (let stepIndex = 0; stepIndex < 4; stepIndex++) await browser.press("Minus");
     const slowTick = await browser.evaluate<number>("window.world.tick");
     await browser.waitFor(
         `window.world.tick > ${slowTick}`,
@@ -258,7 +244,7 @@ afterAll(async () => {
  */
 function scenario(
     name: string,
-    body: (page: BrowserSession) => Promise<void>,
+    body: (page: BrowserSession) => Promise<void> | void,
     timeoutMs = 30_000,
 ): void {
     it(
@@ -325,7 +311,7 @@ async function selectByClick(page: BrowserSession): Promise<{ id: number; middle
         await page.waitFor("window.__probe.hudState() === '已暫停'", "the run to pause");
     }
     const at = await centrePoint(page);
-    for (let i = 0; i < 3; i++) await page.wheel(-120, at);
+    for (let scrollStep = 0; scrollStep < 3; scrollStep++) await page.wheel(-120, at);
     const middle = await probe<Point>(page, "canvasMiddle()");
     const target = await probe<{ id: number; x: number; y: number } | null>(
         page,
@@ -408,7 +394,7 @@ describe("observer controls in a real browser", () => {
             await page.waitFor("window.__probe.hudState() === '已暫停'", "the run to pause");
         }
         const at = await centrePoint(page);
-        for (let i = 0; i < 3; i++) await page.wheel(-120, at);
+        for (let scrollStep = 0; scrollStep < 3; scrollStep++) await page.wheel(-120, at);
         const target = await probe<{ id: number; x: number; y: number } | null>(
             page,
             "animalOnCanvas(40)",
@@ -428,7 +414,7 @@ describe("observer controls in a real browser", () => {
         // the world again — then lift. Pointers that travelled this far are the
         // gesture the drag guard exists for: landing on an animal must not
         // select it.
-        for (let i = 0; i < 2; i++) {
+        for (let correction = 0; correction < 2; correction++) {
             const drawn = await probe<Point | null>(page, `animalScreenPoint(${target.id})`);
             expect(drawn, "the animal under the pointer is still alive").not.toBeNull();
             if (!drawn) throw new Error("the animal under the pointer is still alive");
@@ -515,7 +501,7 @@ describe("observer controls in a real browser", () => {
     scenario("keeps the zoom, pan and framing across a real viewport resize", async (page) => {
         await resetView(page);
         const at = await centrePoint(page);
-        for (let i = 0; i < 5; i++) await page.wheel(-120, at);
+        for (let zoomStep = 0; zoomStep < 5; zoomStep++) await page.wheel(-120, at);
         await page.drag(at, { x: at.x + 48, y: at.y + 32 });
 
         const before = await view(page);
@@ -589,7 +575,7 @@ describe("observer controls in a real browser", () => {
         );
     });
 
-    scenario("drove every gesture without an uncaught page error", async (page) => {
+    scenario("drove every gesture without an uncaught page error", (page) => {
         // Anything a gesture threw — a missing element, a null camera — would be
         // swallowed by the frame loop and never reach the console.
         expect(page.pageErrors).toEqual([]);
