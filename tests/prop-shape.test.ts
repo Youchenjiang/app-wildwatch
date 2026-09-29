@@ -9,7 +9,7 @@
  * cannot silently regress into a comment.
  */
 import { describe, expect, it } from "vitest";
-import * as THREE from "three";
+import { Box3, BufferGeometry, Mesh, Scene } from "three";
 import {
     CARRION_SHAPE,
     MeshPool,
@@ -25,9 +25,9 @@ import { makeSeeding } from "../src/sim/seeding";
 const SPECIES: SpeciesKind[] = ["herbivore", "carnivore"];
 
 /** Bounding box of a geometry in its own frame. */
-function extents(geometry: THREE.BufferGeometry) {
+function extents(geometry: BufferGeometry) {
     geometry.computeBoundingBox();
-    const box = geometry.boundingBox ?? new THREE.Box3();
+    const box = geometry.boundingBox ?? new Box3();
     return {
         width: box.max.x - box.min.x,
         height: box.max.y - box.min.y,
@@ -43,13 +43,13 @@ function extents(geometry: THREE.BufferGeometry) {
  * ground footprint. This is the number that decides whether a player sees a
  * standing body, a tuft, or something lying flat.
  */
-function aspect(geometry: THREE.BufferGeometry): number {
+function aspect(geometry: BufferGeometry): number {
     const box = extents(geometry);
     return box.height / Math.max(box.width, box.depth);
 }
 
 /** The same reading for a mesh as drawn, pose scale included. */
-function drawnAspect(mesh: THREE.Mesh): number {
+function drawnAspect(mesh: Mesh): number {
     const box = extents(mesh.geometry);
     return (
         (box.height * Math.abs(mesh.scale.y)) /
@@ -157,14 +157,14 @@ describe("props as drawn", () => {
             }
             expect(max - min, "one flat tint would flatten the parts together").toBeGreaterThan(0.1);
         }
-        const pool = new MeshPool(new THREE.Scene());
+        const pool = new MeshPool(new Scene());
         expect(pool["plantMaterial"].vertexColors).toBe(true);
         expect(pool["carrionMaterial"].vertexColors).toBe(true);
     });
 
     it("stands a synced plant and corpse on the ground, at their own shapes", () => {
         const world = new World(makeSeeding(4));
-        const pool = new MeshPool(new THREE.Scene());
+        const pool = new MeshPool(new Scene());
         // A corpse is what a death leaves; planting one directly keeps this
         // about the drawing rather than about how long a hunt takes.
         world.carrions.push({

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import * as THREE from "three";
+import { BufferGeometry, Mesh, Scene, Vector3 } from "three";
 import { MeshPool } from "../src/render/meshes";
 import type { ReplayFrame } from "../src/observe/replay";
 import { World } from "../src/sim/world";
@@ -7,9 +7,9 @@ import { makeSeeding } from "../src/sim/seeding";
 import type { Entity } from "../src/sim/entity";
 
 /** The animal's leading vertex in its own frame: the tip of the snout. */
-function snoutTip(geometry: THREE.BufferGeometry): THREE.Vector3 {
+function snoutTip(geometry: BufferGeometry): Vector3 {
     const position = geometry.attributes.position;
-    const tip = new THREE.Vector3();
+    const tip = new Vector3();
     let frontmost = -Infinity;
     for (let i = 0; i < position.count; i++) {
         if (position.getZ(i) > frontmost) {
@@ -32,7 +32,7 @@ function drawnSnout(pool: MeshPool, entity: Entity): { x: number; z: number; len
     const mesh = pool["npcMeshes"].get(entity.id);
     if (!mesh) throw new Error(`mesh not found for entity ${entity.id}`);
     mesh.updateMatrixWorld(true);
-    const rig = mesh.children[0] as THREE.Mesh;
+    const rig = mesh.children[0] as Mesh;
     const tip = snoutTip(rig.geometry).applyMatrix4(rig.matrixWorld).sub(mesh.position);
     return { x: tip.x, z: tip.z, length: Math.hypot(tip.x, tip.z) };
 }
@@ -45,7 +45,7 @@ describe("rendered heading", () => {
         // toward +X, which is a reflection of the sim's convention: the two
         // agree only when an animal happens to be heading along a diagonal.
         const world = new World(makeSeeding(20260907));
-        const pool = new MeshPool(new THREE.Scene());
+        const pool = new MeshPool(new Scene());
         for (let idx = 0; idx < 200; idx++) world.tickStep();
 
         const before = new Map<number, { x: number; y: number }>(
@@ -85,7 +85,7 @@ describe("rendered heading", () => {
         // A replay row stores the same angle the live world drew, so scrubbing
         // must show the same animal facing the same way.
         const world = new World(makeSeeding(20260907));
-        const pool = new MeshPool(new THREE.Scene());
+        const pool = new MeshPool(new Scene());
         for (let idx = 0; idx < 200; idx++) world.tickStep();
         const living = world.entities.filter((entity) => entity.alive).slice(0, 20);
         const frame: ReplayFrame = {

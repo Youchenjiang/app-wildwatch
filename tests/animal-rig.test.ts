@@ -8,7 +8,7 @@
  * their shape, measured both as geometry and as the transforms the pool draws.
  */
 import { describe, expect, it } from "vitest";
-import * as THREE from "three";
+import { Box3, BufferGeometry, Mesh, Object3D, Scene, Vector3 } from "three";
 import { GAIT_RATE, MeshPool, animalGeometry, animalParts } from "../src/render/meshes";
 import { World } from "../src/sim/world";
 import { makeSeeding } from "../src/sim/seeding";
@@ -30,14 +30,14 @@ function timeForWave(id: number, sign: 1 | -1): number {
 }
 
 /** Bounding box of a geometry in its own frame. */
-function localBox(geometry: THREE.BufferGeometry): THREE.Box3 {
+function localBox(geometry: BufferGeometry): Box3 {
     geometry.computeBoundingBox();
     const box = geometry.boundingBox;
-    return box ? box.clone() : new THREE.Box3();
+    return box ? box.clone() : new Box3();
 }
 
 /** The three scales a mesh is actually drawn at, read off its world matrix. */
-function drawnScales(mesh: THREE.Object3D): [number, number, number] {
+function drawnScales(mesh: Object3D): [number, number, number] {
     mesh.updateWorldMatrix(true, false);
     const elements = mesh.matrixWorld.elements;
     return [
@@ -48,15 +48,15 @@ function drawnScales(mesh: THREE.Object3D): [number, number, number] {
 }
 
 /** The world-space size of a mesh's own geometry: what the player sees. */
-function drawnSize(mesh: THREE.Mesh): THREE.Vector3 {
+function drawnSize(mesh: Mesh): Vector3 {
     mesh.updateWorldMatrix(true, false);
     const position = mesh.geometry.attributes.position;
-    const point = new THREE.Vector3();
-    const box = new THREE.Box3();
+    const point = new Vector3();
+    const box = new Box3();
     for (let idx = 0; idx < position.count; idx++) {
         box.expandByPoint(point.fromBufferAttribute(position, idx).applyMatrix4(mesh.matrixWorld));
     }
-    return box.getSize(new THREE.Vector3());
+    return box.getSize(new Vector3());
 }
 
 /** The animal's size in world units, as the pool computes it from its energy. */
@@ -70,9 +70,9 @@ function subjectOf(kind: SpeciesKind) {
     const subject = world.entities.find((entity) => entity.alive && entity.species.kind === kind);
     expect(subject, `no live ${kind} to draw`).toBeTruthy();
     if (!subject) throw new Error(`no live ${kind} to draw`);
-    const pool = new MeshPool(new THREE.Scene());
-    const animal = (): THREE.Mesh => pool["npcMeshes"].get(subject.id) as THREE.Mesh;
-    const rig = (): THREE.Mesh => animal().children[0] as THREE.Mesh;
+    const pool = new MeshPool(new Scene());
+    const animal = (): Mesh => pool["npcMeshes"].get(subject.id) as Mesh;
+    const rig = (): Mesh => animal().children[0] as Mesh;
     return { world, subject, pool, animal, rig };
 }
 
@@ -157,10 +157,10 @@ describe("the split silhouette", () => {
             );
 
             const union = localBox(body).union(
-                localBox(appendages).translate(new THREE.Vector3(anchor.x, anchor.y, anchor.z)),
+                localBox(appendages).translate(new Vector3(anchor.x, anchor.y, anchor.z)),
             );
             const whole = localBox(merged);
-            const rounded = (box: THREE.Box3) => ({
+            const rounded = (box: Box3) => ({
                 min: box.min.toArray().map((v) => Math.round(v * 1e6)),
                 max: box.max.toArray().map((v) => Math.round(v * 1e6)),
             });
