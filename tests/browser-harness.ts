@@ -422,9 +422,15 @@ class BrowserPage implements BrowserSession {
             const formatted = args
                 .map((arg) => {
                     if (arg.value !== undefined) {
-                        return typeof arg.value === "object" && arg.value !== null
-                            ? JSON.stringify(arg.value)
-                            : String(arg.value);
+                        if (typeof arg.value === "string") return arg.value;
+                        if (typeof arg.value === "number" || typeof arg.value === "boolean") {
+                            return arg.value.toString();
+                        }
+                        try {
+                            return JSON.stringify(arg.value);
+                        } catch {
+                            return arg.description ?? "";
+                        }
                     }
                     return arg.description ?? "";
                 })
