@@ -943,6 +943,7 @@ export class MeshPool {
         const parts = animalParts(kind);
         const mesh = new THREE.Mesh(parts.body, material);
         const rig = new THREE.Mesh(parts.appendages, material);
+        rig.name = "animalRig";
         rig.position.set(parts.anchor.x, parts.anchor.y, parts.anchor.z);
         mesh.add(rig);
         this.scene.add(mesh);
@@ -952,7 +953,7 @@ export class MeshPool {
 
     /** The rigid feature rig parented to an animal's body, if it has one. */
     private static rigOf(mesh: THREE.Mesh): THREE.Mesh | null {
-        const rig = mesh.children[0];
+        const rig = mesh.children.find((child) => child.name === "animalRig");
         return rig instanceof THREE.Mesh ? rig : null;
     }
 
