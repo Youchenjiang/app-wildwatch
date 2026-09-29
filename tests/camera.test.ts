@@ -1,18 +1,18 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import * as THREE from "three";
+import { OrthographicCamera, Scene, type WebGLRenderer } from "three";
 import { ObserverCamera } from "../src/render/camera";
 import { resizeContext, type RenderContext } from "../src/render/scene";
 
 /** A context with no WebGL: only the pieces resizeContext touches. */
 function renderContext(): RenderContext {
     const view = 144; // max(width, height) * 0.72 for the 200x200 default world
-    const camera = new THREE.OrthographicCamera(-view, view, view, -view, 0.1, 500);
-    const renderer = { setSize: vi.fn() } as unknown as THREE.WebGLRenderer;
+    const camera = new OrthographicCamera(-view, view, view, -view, 0.1, 500);
+    const renderer = { setSize: vi.fn() } as unknown as WebGLRenderer;
     return {
         camera,
         renderer,
         view,
-        scene: new THREE.Scene(),
+        scene: new Scene(),
         atmosphere: {} as RenderContext["atmosphere"],
     };
 }
@@ -31,7 +31,7 @@ function listenerDom(): ListenerDom {
             listeners.set(type, [...(listeners.get(type) ?? []), fn]);
         },
         removeEventListener: (type: string, fn: (event: any) => void): void => {
-            listeners.set(type, (listeners.get(type) ?? []).filter((h) => h !== fn));
+            listeners.set(type, (listeners.get(type) ?? []).filter((handler) => handler !== fn));
         },
         getBoundingClientRect: () => ({
             left: 0,

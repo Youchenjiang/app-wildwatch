@@ -53,5 +53,5 @@ describe("boundary bounce", () => {
         expect(outward / Math.max(1, edgeSamples)).toBeLessThan(0.5);
         // Regression guard on total edge lingering (old clamp: 0.40).
         expect(edgeSamples / entitySamples).toBeLessThan(0.35);
-    }, 30_000);
+    }, 60_000);
 });

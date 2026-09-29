@@ -289,7 +289,8 @@ const resetView = async (page: BrowserSession): Promise<void> => {
 const centrePoint = async (page: BrowserSession): Promise<Point> => {
     const at = await probe<Point | null>(page, "canvasCentre()");
     expect(at, "the canvas has a point clear of the overlays").not.toBeNull();
-    return at!;
+    if (!at) throw new Error("the canvas has a point clear of the overlays");
+    return at;
 };
 
 /**
@@ -330,14 +331,15 @@ async function selectByClick(page: BrowserSession): Promise<{ id: number; middle
         "animalOnCanvas(40)",
     );
     expect(target, "an animal drew clear of the overlays").not.toBeNull();
+    if (!target) throw new Error("an animal drew clear of the overlays");
 
-    await page.click({ x: target!.x, y: target!.y });
+    await page.click({ x: target.x, y: target.y });
 
     expect((await view(page)).following, "the click must select what it landed on").toBe(
-        target!.id,
+        target.id,
     );
     await page.waitFor("window.__probe.inspectorOpen()", "the inspector to open for that animal");
-    return { id: target!.id, middle };
+    return { id: target.id, middle };
 }
 
 describe("observer controls in a real browser", () => {
@@ -411,7 +413,8 @@ describe("observer controls in a real browser", () => {
             "animalOnCanvas(40)",
         );
         expect(target, "an animal drew clear of the overlays").not.toBeNull();
-        const grab = { x: target!.x, y: target!.y };
+        if (!target) throw new Error("an animal drew clear of the overlays");
+        const grab = { x: target.x, y: target.y };
 
         await page.pointerDown(grab);
         await page.pointerMove({ x: grab.x + 70, y: grab.y + 50 });
@@ -425,18 +428,20 @@ describe("observer controls in a real browser", () => {
         // gesture the drag guard exists for: landing on an animal must not
         // select it.
         for (let i = 0; i < 2; i++) {
-            const drawn = await probe<Point | null>(page, `animalScreenPoint(${target!.id})`);
+            const drawn = await probe<Point | null>(page, `animalScreenPoint(${target.id})`);
             expect(drawn, "the animal under the pointer is still alive").not.toBeNull();
-            await page.pointerMove(drawn!);
+            if (!drawn) throw new Error("the animal under the pointer is still alive");
+            await page.pointerMove(drawn);
             await delay(150);
         }
-        const landed = await probe<Point | null>(page, `animalScreenPoint(${target!.id})`);
+        const landed = await probe<Point | null>(page, `animalScreenPoint(${target.id})`);
         expect(landed).not.toBeNull();
+        if (!landed) throw new Error("the animal under the pointer is still alive");
         expect(
-            Math.hypot(landed!.x - grab.x, landed!.y - grab.y),
+            Math.hypot(landed.x - grab.x, landed.y - grab.y),
             "the drag really did travel",
         ).toBeGreaterThan(10);
-        await page.pointerUp(landed!);
+        await page.pointerUp(landed);
         await page.evaluate("window.__probe.waitFrames(3)");
 
         const after = await view(page);
@@ -452,8 +457,9 @@ describe("observer controls in a real browser", () => {
         await delay(120); // A frame or two for the camera to take hold.
         const settled = await probe<Point | null>(page, `animalScreenPoint(${id})`);
         expect(settled, "the selected animal is drawn").not.toBeNull();
+        if (!settled) throw new Error("the selected animal is drawn");
         // Selecting takes the camera to the animal, rather than only marking it.
-        expect(Math.hypot(settled!.x - middle.x, settled!.y - middle.y)).toBeLessThan(12);
+        expect(Math.hypot(settled.x - middle.x, settled.y - middle.y)).toBeLessThan(12);
         expect((await view(page)).following).toBe(id);
 
         await page.press("Escape");
@@ -484,8 +490,9 @@ describe("observer controls in a real browser", () => {
             await page.evaluate("window.__probe.waitFrames(3)");
             const drawn = await probe<Point | null>(page, `animalScreenPoint(${id})`);
             expect(drawn, "the followed animal is drawn").not.toBeNull();
+            if (!drawn) throw new Error("the followed animal is drawn");
             expect(
-                Math.hypot(drawn!.x - middle.x, drawn!.y - middle.y),
+                Math.hypot(drawn.x - middle.x, drawn.y - middle.y),
                 `the camera must re-aim after the animal moved by (${dx}, ${dy})`,
             ).toBeLessThan(8);
         }
@@ -500,7 +507,8 @@ describe("observer controls in a real browser", () => {
         expect((await view(page)).following).toBeNull();
         const adrift = await probe<Point | null>(page, `animalScreenPoint(${id})`);
         expect(adrift, "the animal is still alive to be measured").not.toBeNull();
-        expect(Math.hypot(adrift!.x - middle.x, adrift!.y - middle.y)).toBeGreaterThan(20);
+        if (!adrift) throw new Error("the animal is still alive to be measured");
+        expect(Math.hypot(adrift.x - middle.x, adrift.y - middle.y)).toBeGreaterThan(20);
     });
 
     scenario("keeps the zoom, pan and framing across a real viewport resize", async (page) => {
