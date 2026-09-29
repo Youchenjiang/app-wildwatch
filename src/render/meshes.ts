@@ -503,7 +503,11 @@ export function buildPlantGeometry(shape: PlantShape = PLANT_SHAPE): THREE.Buffe
         cone.translate(0, shape.stumpHeight * 0.6, 0);
         parts.push(tinted(cone, BODY_TINT));
     }
-    return mergeGeometries(parts, false)!;
+    const merged = mergeGeometries(parts, false);
+    if (!merged) {
+        throw new Error("Failed to merge plant geometry");
+    }
+    return merged;
 }
 
 /**
@@ -583,7 +587,11 @@ export function buildCarrionGeometry(shape: CarrionShape = CARRION_SHAPE): THREE
         limb.translate(side * spread, limbRadius, back);
         parts.push(tinted(limb, BONE_TINT));
     }
-    return mergeGeometries(parts, false)!;
+    const merged = mergeGeometries(parts, false);
+    if (!merged) {
+        throw new Error("Failed to merge carrion geometry");
+    }
+    return merged;
 }
 
 /** Keeps a Three.js mesh per sim entity/plant/carrion id, reusing meshes across frames. */
@@ -886,7 +894,7 @@ export class MeshPool {
                 // A dying animal is one rigid thing again: let the rig take the
                 // body's collapse rather than holding whatever stride it was
                 // caught mid-way through.
-                this.rigOf(mesh)?.scale.set(1, 1, 1);
+                MeshPool.rigOf(mesh)?.scale.set(1, 1, 1);
                 this.collapsing.set(id, {
                     startTime: this.animTime,
                     x: mesh.position.x,
@@ -943,7 +951,7 @@ export class MeshPool {
     }
 
     /** The rigid feature rig parented to an animal's body, if it has one. */
-    private rigOf(mesh: THREE.Mesh): THREE.Mesh | null {
+    private static rigOf(mesh: THREE.Mesh): THREE.Mesh | null {
         const rig = mesh.children[0];
         return rig instanceof THREE.Mesh ? rig : null;
     }
@@ -988,7 +996,7 @@ export class MeshPool {
         // placement of its own — its origin sits at the point the features are
         // planted on, and the body's deform carries that point where the
         // deformed surface goes.
-        const rig = this.rigOf(mesh);
+        const rig = MeshPool.rigOf(mesh);
         if (rig) {
             const stride = gaitDeform(gait, wave);
             rig.scale.set(1 / stride.x, 1 / stride.y, 1 / stride.z);
