@@ -380,8 +380,13 @@ export async function startBrowserSession(options: BrowserOptions = {}): Promise
     })) as { sessionId: string };
 
     const session = new BrowserPage(browser, sessionId, chrome, server, fs, profile, url, width, height);
-    await session.prepare();
-    return session;
+    try {
+        await session.prepare();
+        return session;
+    } catch (error) {
+        await session.close();
+        throw error;
+    }
 }
 
 class BrowserPage implements BrowserSession {
