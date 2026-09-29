@@ -25,12 +25,12 @@ interface ListenerDom {
 }
 
 function listenerDom(): ListenerDom {
-    const listeners = new Map<string, Array<(event: any) => void>>();
+    const listeners = new Map<string, Array<(event: unknown) => void>>();
     const dom = {
-        addEventListener: (type: string, fn: (event: any) => void): void => {
+        addEventListener: (type: string, fn: (event: unknown) => void): void => {
             listeners.set(type, [...(listeners.get(type) ?? []), fn]);
         },
-        removeEventListener: (type: string, fn: (event: any) => void): void => {
+        removeEventListener: (type: string, fn: (event: unknown) => void): void => {
             listeners.set(type, (listeners.get(type) ?? []).filter((handler) => handler !== fn));
         },
         getBoundingClientRect: () => ({

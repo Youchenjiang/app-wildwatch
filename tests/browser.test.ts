@@ -267,6 +267,7 @@ function scenario(
             const page = browser;
             context.skip(page === null, "no Chromium-based browser found on this machine");
             if (!page) return;
+            expect(page).toBeDefined();
             onTestFailed(async () => {
                 const shot = await page.screenshot(name);
                 console.error(`[browser] ${name} failed; screenshot: ${shot ?? "unavailable"}`);

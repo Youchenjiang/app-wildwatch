@@ -284,6 +284,12 @@ export interface BrowserOptions {
 
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
+const randomPortOffset = (range: number): number => {
+    const buffer = new Uint16Array(1);
+    crypto.getRandomValues(buffer);
+    return (buffer[0] ?? 0) % range;
+};
+
 /** Start a dev server and a browser, and navigate it at the app. */
 export async function startBrowserSession(options: BrowserOptions = {}): Promise<BrowserSession> {
     const executable = await findBrowser();
@@ -306,7 +312,7 @@ export async function startBrowserSession(options: BrowserOptions = {}): Promise
         logLevel: "warn",
         server: {
             host: "127.0.0.1",
-            port: 5200 + Math.floor(Math.random() * 300),
+            port: 5200 + randomPortOffset(300),
             strictPort: false,
         },
     });
@@ -314,7 +320,7 @@ export async function startBrowserSession(options: BrowserOptions = {}): Promise
     const url = server.resolvedUrls?.local?.[0];
     if (!url) throw new Error("the harness dev server did not report a local URL");
 
-    const debugPort = 9400 + Math.floor(Math.random() * 400);
+    const debugPort = 9400 + randomPortOffset(400);
     const profile = `${os.tmpdir()}/freebuff-browser-${Date.now().toString(36)}`;
     const flags = [
         `--remote-debugging-port=${debugPort}`,
@@ -408,9 +414,17 @@ class BrowserPage implements BrowserSession {
         this.browser.on("Runtime.consoleAPICalled", (params) => {
             if (params.type !== "error") return;
             const args = (params.args as Array<{ value?: unknown; description?: string }>) ?? [];
-            this.pageErrors.push(
-                `console.error: ${args.map((a) => String(a.value ?? a.description)).join(" ")}`,
-            );
+            const formatted = args
+                .map((arg) => {
+                    if (arg.value !== undefined) {
+                        return typeof arg.value === "object" && arg.value !== null
+                            ? JSON.stringify(arg.value)
+                            : String(arg.value);
+                    }
+                    return arg.description ?? "";
+                })
+                .join(" ");
+            this.pageErrors.push(`console.error: ${formatted}`);
         });
         this.browser.on("Log.entryAdded", (params) => {
             const entry = params.entry as { level?: string; text?: string; url?: string } | undefined;
@@ -418,7 +432,8 @@ class BrowserPage implements BrowserSession {
             // A missing favicon is the browser's own request, not the app
             // failing at anything, and no scenario can influence it.
             if ((entry.url ?? "").endsWith("/favicon.ico")) return;
-            this.pageErrors.push(`log: ${entry.text ?? ""}${entry.url ? ` (${entry.url})` : ""}`);
+            const urlSuffix = entry.url ? ` (${entry.url})` : "";
+            this.pageErrors.push(`log: ${entry.text ?? ""}${urlSuffix}`);
         });
 
         // Listeners first, so a failure while loading the app is captured.
