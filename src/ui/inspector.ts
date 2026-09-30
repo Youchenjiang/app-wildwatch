@@ -1,7 +1,7 @@
 import type { Entity } from "../sim/entity";
 import { cosineSimilarity } from "../sim/memory";
 import type { Meal, MealSource } from "../sim/meals";
-import type { Plant, World } from "../sim/world";
+import type { Carrion, Plant, World } from "../sim/world";
 
 const MEMORY_ROWS = 8;
 const MEAL_ROWS = 6;
@@ -16,6 +16,12 @@ const MEAL_LABEL: Record<MealSource, string> = {
 const KIN_LABEL: Record<"ancestor" | "descendant", string> = {
     ancestor: "親代",
     descendant: "子代",
+};
+
+const DEATH_REASON_LABEL: Record<string, string> = {
+    starvation: "餓死",
+    "old age": "壽終",
+    preyed: "被獵殺",
 };
 
 interface MemoryRow {
@@ -144,6 +150,29 @@ export function createInspector(container: HTMLElement): EntityInspector {
     }
 
     /**
+     * The corpse card. Shows when and how the animal died.
+     */
+    function renderCorpse(corpse: Carrion, world: World): void {
+        const ageAtDeath = world.tick - corpse.deathTick;
+        const deathReasonLabel = DEATH_REASON_LABEL[corpse.deathReason] ?? corpse.deathReason;
+        card.innerHTML = `
+            <div class="insp-head">
+                <span class="dot carn"></span>
+                <span>屍體 #${corpse.id}</span>
+                <button id="insp-close" title="關閉">✕</button>
+            </div>
+            <div class="insp-rows">
+                <div><span>原始個體</span><b>#${corpse.fromId}（世代 ${corpse.fromGeneration}）</b></div>
+                <div><span>死亡 tick</span><b>${corpse.deathTick}</b></div>
+                <div><span>死亡原因</span><b>${deathReasonLabel}</b></div>
+                <div><span>已死亡</span><b>${ageAtDeath} ticks</b></div>
+                <div><span>剩餘能量</span><b>${corpse.energy.toFixed(1)}</b></div>
+            </div>
+        `;
+        card.querySelector("#insp-close")?.addEventListener("click", () => cardOwner().hide());
+    }
+
+    /**
      * The tuft card. `bites` is the sim's own countdown, so "how many bites
      * left" is read rather than recomputed from a remainder.
      */
@@ -205,6 +234,12 @@ export function createInspector(container: HTMLElement): EntityInspector {
                 if (targetPlant) {
                     cachedPlant = targetPlant;
                     renderPlant(targetPlant, world, false);
+                    return;
+                }
+                // Check if it's a corpse
+                const targetCorpse = world.carrions.find((carrion) => carrion.id === current && carrion.alive);
+                if (targetCorpse) {
+                    renderCorpse(targetCorpse, world);
                     return;
                 }
                 // The subject left the world (eaten, killed, or we are in
