@@ -697,7 +697,10 @@ export class World {
         // Turning is biomechanically expensive: sharp sustained steering
         // (spiraling) burns energy far faster than purposeful travel.
         const turnPenalty = turnEnergyMultiplier(s.turnCost, steerMag, thrust);
-        e.energy -= s.moveCost * (0.3 + 0.7 * thrust) * turnPenalty;
+        // Charged even when the animal cannot pay for it: the step has already
+        // been taken. `spend` stops the charge at zero rather than letting a
+        // starving animal run on credit it can never repay.
+        World.spend(e, s.moveCost * (0.3 + 0.7 * thrust) * turnPenalty);
 
         this.tryEat(e, inputs, steer);
 
@@ -1046,12 +1049,12 @@ export class World {
             this.spawnEntity(s, generation, e, mate ?? undefined, childEnergy);
         }
         if (mate) {
-            e.energy -= s.reproduceCost / 2;
-            mate.energy -= s.reproduceCost / 2;
+            World.spend(e, s.reproduceCost / 2);
+            World.spend(mate, s.reproduceCost / 2);
             mate.reproduceCooldown = REPRODUCE_COOLDOWN;
             this.sexualBirthTotal += s.litterSize;
         } else {
-            e.energy -= s.reproduceCost;
+            World.spend(e, s.reproduceCost);
             this.asexualBirthTotal += s.litterSize;
         }
         e.reproduceCooldown = REPRODUCE_COOLDOWN;
@@ -1100,6 +1103,20 @@ export class World {
                 fromGeneration: e.generation,
             });
         }
+    }
+
+    /**
+     * Charge an animal for something it did, without letting its energy go
+     * below zero.
+     *
+     * Energy is spent before it is known whether the animal will eat this tick,
+     * and the last step of its life is usually one it cannot quite afford, so an
+     * unclamped charge left it briefly negative. That state has no meaning — it
+     * cannot pay for movement it has already made — and it reads as "starving"
+     * to anything comparing energy against zero.
+     */
+    private static spend(e: Entity, amount: number): void {
+        e.energy = Math.max(0, e.energy - amount);
     }
 
     // ---------------------------------------------------------------------
