@@ -16,10 +16,20 @@ export const DEFAULT_BRAIN_SPEC: BrainSpec = {
     outputSize: 2,
 };
 
+/**
+ * A plant stands still from the moment it grows.
+ *
+ * `x` and `y` are readonly because the spatial index files a plant once, when
+ * it appears, and never re-checks it — there is nothing about a plant that can
+ * go stale. Anything that moved a plant after it was filed would vanish from
+ * the index's point of view while still standing in the world, and grazing
+ * would quietly stop finding it. The type is what stops that silently
+ * happening rather than a comment asking nicely.
+ */
 export interface Plant {
     id: number;
-    x: number;
-    y: number;
+    readonly x: number;
+    readonly y: number;
     energy: number;
     alive: boolean;
 }
@@ -27,8 +37,9 @@ export interface Plant {
 /** A dead animal: returns its unconsumed energy to the environment (rule 6). */
 export interface Carrion {
     id: number;
-    x: number;
-    y: number;
+    /** Readonly for the same reason as a plant's: a body lies where it fell. */
+    readonly x: number;
+    readonly y: number;
     energy: number;
     alive: boolean;
     /** The animal this body used to be, so its lineage stays knowable. */
@@ -167,6 +178,14 @@ export interface WorldConfig {
     mealLogCapacity?: number;
     /** Scenario era: redisot the biome palette and species tuning per era. */
     era?: import("./era").EraConfig;
+    /**
+     * Fraction of maxEnergy below which a starving carnivore considers
+     * same-species animals as prey (default 0 = disabled). When enabled,
+     * the hunt still uses the catch-chance mechanic (with carnivore density
+     * for the prey-refuge factor), so cannibalism becomes more likely when
+     * predators are crowded and herbivores are scarce.
+     */
+    cannibalismThreshold?: number;
 }
 
 interface Sense {
@@ -371,13 +390,11 @@ export class World {
             alive: true,
         };
         this.plants.push(plant);
-        // Filed the moment it grows, alongside the tick's rebuild that re-files
-        // every plant. Dispersal has to see the plants that are already
-        // standing: a seed can sprout beside one that appeared earlier in this
-        // same tick's regrowth, and filing it only at the rebuild would let the
-        // spacing check miss that neighbour and pack a saturated patch tighter
-        // than plantSpacing allows. The rebuild clears before it refills, so
-        // the plant is never in the grid twice.
+        // A plant is filed when it appears and never touched again, because it
+        // never moves: there is nothing about a plant that can go stale. It is
+        // filed here rather than at the tick's sync point because regrowth
+        // happens before that point, and the rebuild this replaced ran after
+        // regrowth — so a plant grown this tick was grazed this tick.
         this.plantGrid.insert(plant);
     }
 
@@ -496,11 +513,11 @@ export class World {
             this.plantRegrowAccum -= 1;
         }
 
-        this.rebuildIndexes();
+        this.syncIndexes();
 
         // Update every entity.
-        for (const e of this.entities) {
-            if (e.alive) this.updateEntity(e);
+        for (const entity of this.entities) {
+            if (entity.alive) this.updateEntity(entity);
         }
 
         this.recordPopulationDensity();
@@ -525,44 +542,68 @@ export class World {
         }
     }
 
-    /** Drop the dead entities and plants after a tick. */
+    /** Sweep the dead, unhooking each from its index as it leaves. */
     private sweepTheDead(): void {
-        this.entities = this.entities.filter((e) => e.alive);
-        this.plants = this.plants.filter((p) => p.alive);
+        this.entities = World.sweep(this.entities, this.grid);
+        this.plants = World.sweep(this.plants, this.plantGrid);
     }
 
     /** Carrion decays naturally; fully decayed corpses vanish (rule 6). */
     private decayCarrion(): void {
         const decay = this.config.carrionDecayPerTick ?? 0.05;
-        for (const c of this.carrions) {
-            if (c.alive) c.energy -= decay;
-            if (c.energy <= 0) c.alive = false;
+        for (const corpse of this.carrions) {
+            if (corpse.alive) corpse.energy -= decay;
+            if (corpse.energy <= 0) corpse.alive = false;
         }
-        this.carrions = this.carrions.filter((c) => c.alive);
-    }
-
-    /** Rebuild the spatial indexes for the current tick. */
-    private rebuildIndexes(): void {
-        this.grid.clear();
-        for (const e of this.entities) {
-            if (e.alive) this.grid.insert(e);
-        }
-        this.plantGrid.clear();
-        for (const p of this.plants) {
-            if (p.alive) this.plantGrid.insert(p);
-        }
-        this.carrionGrid.clear();
-        for (const c of this.carrions) {
-            if (c.alive) this.carrionGrid.insert(c);
-        }
+        this.carrions = World.sweep(this.carrions, this.carrionGrid);
     }
 
     /** Light population-level life-grid bookkeeping. */
     private recordPopulationDensity(): void {
         if (this.tick % 4 !== 0) return;
-        for (const e of this.entities) {
-            if (e.alive) this.lifeGrid.record(e.pos.x, e.pos.y, 0.25);
+        for (const entity of this.entities) {
+            if (entity.alive) this.lifeGrid.record(entity.pos.x, entity.pos.y, 0.25);
         }
+    }
+
+    /**
+     * Bring the three indexes up to date, in place.
+     *
+     * This replaces a full rebuild and sits at the same point in the tick as
+     * the rebuild did, which is what makes it a pure speed change: a query in
+     * this tick sees the same items at the same positions it always did. That
+     * timing is load-bearing in both directions, so it is worth stating:
+     *
+     * - An animal born during the previous tick is filed here, not at birth.
+     *   Filed at birth it would have been visible to a predator later in the
+     *   very tick it was born, which the rebuild never allowed.
+     * - Corpses follow the same rule: a body left by a kill this tick becomes
+     *   scavengeable at the next sync, so a kill and a scavenging of it cannot
+     *   collapse into the same tick.
+     * - Nothing is taken out here. The dead are unhooked by the sweep at the
+     *   end of the tick that killed them, which is the tick the rebuild would
+     *   have started skipping them.
+     */
+    private syncIndexes(): void {
+        // Entities are the only things that move, so they are the only ones
+        // worth re-checking. `update` is a no-op for everything that stayed in
+        // its cell, which is most of the population on most ticks.
+        for (const entity of this.entities) {
+            if (entity.alive) this.grid.update(entity);
+        }
+        for (const corpse of this.carrions) {
+            if (corpse.alive) this.carrionGrid.update(corpse);
+        }
+    }
+
+    /** Drop the dead from a list, and from the index that held them. */
+    private static sweep<T extends { alive: boolean }>(items: T[], index: SpatialGrid<T>): T[] {
+        const kept: T[] = [];
+        for (const item of items) {
+            if (item.alive) kept.push(item);
+            else index.remove(item);
+        }
+        return kept;
     }
 
     private updateEntity(e: Entity): void {
@@ -646,17 +687,33 @@ export class World {
         return best;
     }
 
-    private sense(e: Entity): Sense | null {
-        const s = e.species;
-        const found =
-            s.kind === "herbivore"
-                ? this.nearest(this.queryPlants(e.pos, s.senseRange), (p) => p.alive, (p) => p, e.pos)
-                : this.nearest(
-                      this.queryEntities(e.pos, s.senseRange),
-                      (p) => p.alive && p.species.kind === "herbivore",
-                      (p) => p.pos,
-                      e.pos,
-                  );
+    private sense(entity: Entity): Sense | null {
+        const species = entity.species;
+        if (species.kind === "herbivore") {
+            const found = this.nearest(
+                this.queryPlants(entity.pos, species.senseRange),
+                (plant) => plant.alive,
+                (plant) => plant,
+                entity.pos,
+            );
+            return found ? { dx: found.dx, dy: found.dy, dist: Math.sqrt(found.d2) } : null;
+        }
+
+        // A threshold of 0 means "off", and has to be checked as such:
+        // energy dips slightly below zero before an animal dies, so
+        // comparing that dip against `0 * maxEnergy` reads it as starvation
+        // and lets a nominally disabled feature hunt its own kind.
+        const cannibalThreshold = this.config.cannibalismThreshold ?? 0;
+        const starving = cannibalThreshold > 0 && entity.energy < cannibalThreshold * species.maxEnergy;
+        const found = this.nearest(
+            this.queryEntities(entity.pos, species.senseRange),
+            (candidate) =>
+                candidate.alive &&
+                (candidate.species.kind === "herbivore" ||
+                    (starving && candidate !== entity && candidate.species.kind === species.kind)),
+            (candidate) => candidate.pos,
+            entity.pos,
+        );
         return found ? { dx: found.dx, dy: found.dy, dist: Math.sqrt(found.d2) } : null;
     }
 
@@ -772,9 +829,18 @@ export class World {
 
     private tryHunt(entity: Entity, inputs: number[], steer: number): void {
         const species = entity.species;
+        // A threshold of 0 means "off", and has to be checked as such:
+        // energy dips slightly below zero before an animal dies, so
+        // comparing that dip against `0 * maxEnergy` reads it as starvation
+        // and lets a nominally disabled feature hunt its own kind.
+        const cannibalThreshold = this.config.cannibalismThreshold ?? 0;
+        const starving = cannibalThreshold > 0 && entity.energy < cannibalThreshold * species.maxEnergy;
         const found = this.nearest(
             this.queryEntities(entity.pos, species.eatRadius),
-            (target) => target.alive && target.species.kind === "herbivore",
+            (target) =>
+                target.alive &&
+                (target.species.kind === "herbivore" ||
+                    (starving && target !== entity && target.species.kind === species.kind)),
             (target) => target.pos,
             entity.pos,
         );
@@ -784,8 +850,10 @@ export class World {
         // prey are rare, hunts almost always fail, so predators starve
         // back before they can finish the prey off. When prey are
         // abundant, hunts saturate and predators can boom.
+        const isCannibal = found.item.species.kind === species.kind;
         const preyDensity =
-            this.populationOf("herbivore") / (this.config.width * this.config.height);
+            this.populationOf(isCannibal ? "carnivore" : "herbivore") /
+            (this.config.width * this.config.height);
         const scarcity = Math.min(1, preyDensity / PREY_REFUGE_DENSITY);
         const factor = scarcity * scarcity * scarcity * SATURATION_BONUS + REFUGE_FLOOR;
         if (this.rng() < CATCH_CHANCE * factor) {
@@ -818,10 +886,11 @@ export class World {
             entity.energy = Math.min(species.maxEnergy, entity.energy + gained);
             entity.fitness += gained;
             entity.foodEaten++;
-            // Kin can only be met here, not in the hunt above: offspring
-            // always inherit their parent's species, and a carnivore only
-            // ever hunts herbivores. So a predator's relatives are
-            // carnivores, which reach it as carrion and never as prey.
+            // Kin can be met here, or in the hunt above when cannibalism
+            // is enabled and the hunter is starving.  Offspring always
+            // inherit their parent's species, so a predator's relatives
+            // are carnivores — reached as carrion normally, or as live
+            // prey only under desperation.
             //
             // Both directions are asked for deliberately. A parent that
             // dies leaves a body its offspring may still be standing next

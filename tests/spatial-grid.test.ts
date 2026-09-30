@@ -98,6 +98,119 @@ describe("SpatialGrid", () => {
         expect(elsewhere).toHaveLength(0);
     });
 
+    it("re-files an item that crosses into another cell and leaves nothing behind", () => {
+        const grid = new SpatialGrid<Item>(10, (entry) => entry);
+        const mover = item(1, 5, 5);
+        grid.insert(mover);
+        grid.insert(item(2, 6, 5));
+
+        mover.x = 55;
+        mover.y = 55;
+        grid.update(mover);
+
+        const here: Item[] = [];
+        grid.query(5, 5, 5, here);
+        expect(here.map((entry) => entry.id)).toEqual([2]);
+        const there: Item[] = [];
+        grid.query(55, 55, 5, there);
+        expect(there.map((entry) => entry.id)).toEqual([1]);
+        // The move must not have left a second copy in the old cell.
+        expect(grid.size).toBe(2);
+    });
+
+    it("keeps filing order when a mover joins a cell", () => {
+        // Order is simulation behaviour, not bookkeeping: query hands items
+        // back in this order and a scavenger eats the first corpse it is
+        // handed. A rebuild ordered a cell by creation, so a mover must slot in
+        // by creation and not by arrival.
+        const grid = new SpatialGrid<Item>(10, (entry) => entry);
+        const first = item(1, 5, 5);
+        const second = item(2, 6, 5);
+        const third = item(3, 7, 5);
+        grid.insert(first);
+        grid.insert(second);
+        grid.insert(third);
+
+        // Send the youngest away, then send the oldest after it: arrival order
+        // is 3 then 1, creation order is 1 then 3.
+        third.x = 55;
+        third.y = 55;
+        grid.update(third);
+        first.x = 55;
+        first.y = 55;
+        grid.update(first);
+
+        const out: Item[] = [];
+        grid.query(55, 55, 5, out);
+        expect(out.map((entry) => entry.id)).toEqual([1, 3]);
+    });
+
+    it("does no work for an item that stayed in its cell", () => {
+        const grid = new SpatialGrid<Item>(10, (entry) => entry);
+        const alpha = item(1, 5, 5);
+        const beta = item(2, 6, 5);
+        grid.insert(alpha);
+        grid.insert(beta);
+
+        // A small move inside the same cell, the common case every tick.
+        alpha.x = 7;
+        alpha.y = 8;
+        grid.update(alpha);
+
+        const out: Item[] = [];
+        grid.query(5, 5, 5, out);
+        expect(out.map((entry) => entry.id)).toEqual([1, 2]);
+        expect(grid.size).toBe(2);
+        expect(grid.has(alpha)).toBe(true);
+    });
+
+    it("files an entry that update sees for the first time", () => {
+        // How a newborn enters the index: update is called on it at the sync
+        // point rather than at birth, so insert-on-first-sight is the contract.
+        const grid = new SpatialGrid<Item>(10, (entry) => entry);
+        const late = item(9, 5, 5);
+        expect(grid.has(late)).toBe(false);
+        grid.update(late);
+        expect(grid.has(late)).toBe(true);
+        const out: Item[] = [];
+        grid.query(5, 5, 1, out);
+        expect(out.map((entry) => entry.id)).toEqual([9]);
+    });
+
+    it("unhooks a removed item and keeps the order of the rest", () => {
+        const grid = new SpatialGrid<Item>(10, (entry) => entry);
+        const first = item(1, 5, 5);
+        const second = item(2, 5.5, 5);
+        const third = item(3, 6, 5);
+        grid.insert(first);
+        grid.insert(second);
+        grid.insert(third);
+
+        grid.remove(second);
+        expect(grid.size).toBe(2);
+        expect(grid.has(second)).toBe(false);
+
+        const out: Item[] = [];
+        grid.query(5, 5, 5, out);
+        expect(out.map((entry) => entry.id)).toEqual([1, 3]);
+
+        // Removing twice, or removing something never filed, is harmless.
+        grid.remove(second);
+        grid.remove(item(99, 0, 0));
+        expect(grid.size).toBe(2);
+    });
+
+    it("ignores a second insert of the same item", () => {
+        const grid = new SpatialGrid<Item>(10, (entry) => entry);
+        const duplicate = item(1, 5, 5);
+        grid.insert(duplicate);
+        grid.insert(duplicate);
+        expect(grid.size).toBe(1);
+        const out: Item[] = [];
+        grid.query(5, 5, 1, out);
+        expect(out.map((entry) => entry.id)).toEqual([1]);
+    });
+
     it("clear removes everything", () => {
         const grid = new SpatialGrid<Item>(10, (entry) => entry);
         grid.insert(item(1, 1, 1));
