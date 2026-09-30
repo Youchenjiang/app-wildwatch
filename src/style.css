@@ -302,7 +302,9 @@ body {
 }
 
 #controls #ctl-speed-label {
-    min-width: 30px;
+    /* Wide enough for the longest speed ("4000/s"), so stepping through the
+       ladder cannot resize the bar and shuffle the buttons under the cursor. */
+    min-width: 40px;
     text-align: center;
     font-size: 11px;
     color: #b9e4c0;
