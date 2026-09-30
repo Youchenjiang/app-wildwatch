@@ -27,7 +27,65 @@
   - `docs/<short-name>`：文件撰寫與維護
   - `style/<short-name>`：UI 樣式與排版調整
   - `chore/<short-name>`：相依套件與工程維護
-- 若分支過期，發起 PR 前請先針對 `main` 進行 Rebase。
+
+### 串接 PR 工作流程 (Chained / Stacked PRs)
+
+當一批功能需要依序合入時，採用 **rolling rebase** 策略，而非將所有分支都堆在同一個長分支上：
+
+```
+main ──▶ merge PR #1 ──▶ merge PR #2 ──▶ merge PR #N
+              ↑                ↑                ↑
+     feature/foo     feature/bar      feature/baz
+```
+
+**操作步驟（每一輪）**：
+
+1. 前一個 PR 合併進 `main` 後，立即拉取最新遠端：
+   ```bash
+   git fetch origin
+   ```
+2. 將下一個功能分支 rebase 至最新的 `origin/main`：
+   ```bash
+   git rebase origin/main feature/<next-name>
+   ```
+3. 確認本地通過所有檢查後再 push 並開 PR：
+   ```bash
+   npm run typecheck && npm run test:policy && npm test
+   ```
+   push 的方式取決於**歷史有沒有被改寫**，不是每輪都用 force：
+
+   - **只是追加 commit**（例如在已開啟、尚未合併的 PR 上再補一筆修正）→ 這是 fast-forward，用正常 push 即可：
+     ```bash
+     git push origin feature/<next-name>
+     ```
+   - **剛剛 rebase 過、commit SHA 被改寫**（`main` 因前一個 PR 合併而前進）→ 遠端上的舊 commit 本地已不存在，正常 push 會被拒（non-fast-forward），這時才需要 lease：
+     ```bash
+     git push --force-with-lease origin feature/<next-name>
+     ```
+
+   不確定屬於哪一種時，先正常 push，只有被拒時才改用 lease：
+   ```bash
+   git push origin feature/<next-name> || git push --force-with-lease origin feature/<next-name>
+   ```
+4. 在 GitHub 上將 PR 的 **base branch 設為 `main`**（不要設為前一個功能分支）。
+
+> [!IMPORTANT]
+> 只有當 rebase **改寫了歷史**時才需要 `--force-with-lease`（且永遠不要用 `--force`，以免覆蓋他人推送）；單純追加 commit 請用正常 `git push`。判斷準則：**`git push` 被拒絕（non-fast-forward）才需要 force。**
+
+### GitHub 儲存庫設定要求 (Repository Settings)
+
+rolling rebase 依賴「每個 PR 的 commit 原樣進入 `main`」，因此儲存庫設定必須滿足以下要求，否則串接鏈會在第一個 PR 合併後全面衝突：
+
+1. **嚴禁 Squash merge**：squash 會把整個 PR 壓成一個 commit，`main` 上不會出現分支中的任何 commit，下一支 rebase 時 Git 無法辨識哪些變更已合入，導致重複套用與衝突。設定方式：Repo → Settings → General → Pull Requests → 取消勾選 **Allow squash merging**，僅保留 **Merge commit** 與 **Rebase and fast-forward**。
+2. **分支保護（main）**：必須經由 PR 合入、禁止直接 push 與 force-push，以確保所有變更都走上述流程。建議以 Ruleset 實作（Settings → Rules → Rulesets）：
+   - `pull_request` 規則：require a pull request before merging；`allowed_merge_methods` 僅勾選 `merge` 與 `rebase`。
+   - `non_fast_forward` 規則：禁止對 `main` force-push。
+   - `deletion` 規則：禁止刪除 `main`。
+3. **Required status checks**：隨著 PR 鏈推進逐步加入。PR #2 合併後，將 test workflow 的 job name（`Typecheck, build, and unit tests`）加入 required checks。注意：required check 必須使用 workflow 的 **job name**（顯示在 checks 頁籤的名稱），而非 job id；且引用的 workflow 必須已存在於 `main`，否則所有 PR 會永久 BLOCKED。
+4. **合併後自動刪除分支**：建議開啟 Settings → General → Pull Requests → **Automatically delete head branches**，保持遠端分支清單乾淨。
+
+> [!WARNING]
+> 若 PR 顯示 `BLOCKED` 但所有 checks 皆綠，優先檢查 ruleset 中是否殘留此階段無法滿足的規則（如 `code_scanning` 要求 CodeQL、`required_review_thread_resolution` 要求所有對話已解決、或 required check 引用了尚不存在於 `main` 的 workflow job）。
 
 ---
 
