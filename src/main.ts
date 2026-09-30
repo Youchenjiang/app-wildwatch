@@ -17,7 +17,7 @@ import { createWelcome } from "./ui/welcome";
 import { ReplayRecorder } from "./observe/replay";
 import { DEFAULT_TICKS_PER_SECOND, SPEED_STEPS, advanceTicks } from "./observe/pacing";
 import { desertEra, grasslandEra, iceAgeEra } from "./sim/era";
-import { loadGodMemory, sacredSeedToBrain } from "./sim/persistence";
+import { createDefaultGodMemory, loadGodMemory, sacredSeedToBrain } from "./sim/persistence";
 
 import type { EraConfig } from "./sim/era";
 
@@ -32,11 +32,16 @@ function eraAtmosphereColors(era?: EraConfig) {
     return era ? atmosphereColorsForEra(era) : defaultAtmosphereColors();
 }
 
-const godMemory = await loadGodMemory("./data/god-memory.json");
+let godMemory = createDefaultGodMemory();
 const founderGenomes = {
     herbivore: sacredSeedToBrain(godMemory.sacredSeeds.herbivore),
     carnivore: sacredSeedToBrain(godMemory.sacredSeeds.carnivore),
 };
+loadGodMemory("./data/god-memory.json").then((loaded) => {
+    godMemory = loaded;
+    founderGenomes.herbivore = sacredSeedToBrain(godMemory.sacredSeeds.herbivore);
+    founderGenomes.carnivore = sacredSeedToBrain(godMemory.sacredSeeds.carnivore);
+});
 
 let world = new World({ ...makeSeeding(), founderGenomes });
 let ctx: RenderContext = createRenderContext(
