@@ -248,6 +248,8 @@ export interface WorldConfig {
     juvenileDuration?: number;
     /** Social mode: 'solitary' (default, independent) or 'pack' (alarm calls & hunt scent tracking). */
     socialMode?: "solitary" | "pack";
+    /** Continuous social cohesion spectrum: 0.0 (solitary) to 1.0 (pack). */
+    socialCohesion?: number;
     /** Pre-evolved sacred founder brains from god memory (fallback to random if unset). */
     founderGenomes?: {
         herbivore?: import("./brain").Brain;
@@ -709,6 +711,16 @@ export class World {
         return undefined;
     }
 
+    /** Dynamically configure social mode and cohesion spectrum. */
+    setSocialMode(mode: "solitary" | "pack", cohesion?: number): void {
+        this.config.socialMode = mode;
+        if (cohesion !== undefined) {
+            this.config.socialCohesion = Math.max(0, Math.min(1, cohesion));
+        } else {
+            this.config.socialCohesion = mode === "pack" ? 1.0 : 0.0;
+        }
+    }
+
     private updateEntity(e: Entity): void {
         const s = e.species;
         e.age++;
@@ -777,12 +789,14 @@ export class World {
         if (e.isJuvenile && e.motherId !== null) {
             return this.applyJuvenileSteering(e, steer, thrust);
         }
-        if (this.config.socialMode !== "pack") return { steer, thrust };
+        const cohesion =
+            this.config.socialCohesion ?? (this.config.socialMode === "pack" ? 1.0 : 0.0);
+        if (cohesion <= 0) return { steer, thrust };
 
         if (s.kind === "herbivore") {
             const threat = this.nearestThreat(e);
             if (threat && Math.sqrt(threat.d2) < s.senseRange * 0.5) {
-                this.socialGrid.emitAlarm(e.pos.x, e.pos.y, 1.0);
+                this.socialGrid.emitAlarm(e.pos.x, e.pos.y, cohesion);
             }
             const alarm = this.socialGrid.queryAlarm(e.pos.x, e.pos.y);
             if (alarm && (!threat || Math.sqrt(threat.d2) > 8)) {
@@ -790,7 +804,11 @@ export class World {
                 let angleDiff = fleeAngle - e.angle;
                 while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
                 while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-                return { steer: steer * 0.4 + Math.sign(angleDiff) * 0.6, thrust: Math.max(thrust, 0.8) };
+                const blend = 0.6 * cohesion;
+                return {
+                    steer: steer * (1 - blend) + Math.sign(angleDiff) * blend,
+                    thrust: Math.max(thrust, 0.5 + 0.3 * cohesion),
+                };
             }
         } else if (s.kind === "carnivore") {
             if (!sense || sense.dist > 15) {
@@ -800,7 +818,11 @@ export class World {
                     let angleDiff = huntAngle - e.angle;
                     while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
                     while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-                    return { steer: steer * 0.5 + Math.sign(angleDiff) * 0.5, thrust: Math.max(thrust, 0.7) };
+                    const blend = 0.5 * cohesion;
+                    return {
+                        steer: steer * (1 - blend) + Math.sign(angleDiff) * blend,
+                        thrust: Math.max(thrust, 0.5 + 0.2 * cohesion),
+                    };
                 }
             }
         }
@@ -1053,8 +1075,10 @@ export class World {
         if (this.rng() < CATCH_CHANCE * factor) {
             const meat = found.item.energy;
             this.kill(found.item, "preyed");
-            if (this.config.socialMode === "pack") {
-                this.socialGrid.depositScent(found.item.pos.x, found.item.pos.y, 2.0);
+            const cohesion =
+                this.config.socialCohesion ?? (this.config.socialMode === "pack" ? 1.0 : 0.0);
+            if (cohesion > 0) {
+                this.socialGrid.depositScent(found.item.pos.x, found.item.pos.y, 2.0 * cohesion);
             }
             const gained = Math.min(meat * 0.6, species.maxEnergy * 0.5) + species.foodEnergy;
             entity.energy += gained;

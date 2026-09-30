@@ -112,4 +112,33 @@ describe("Social Signals & Collective Dynamics", () => {
         // No alarm should be emitted in solitary mode
         expect(world.socialGrid.queryAlarm(50, 50, 10)).toBeNull();
     });
+
+    it("dynamically switches social modes and scales cohesion spectrum", () => {
+        const config = {
+            ...makeSeeding(20260907),
+            herbivoreCount: 1,
+            carnivoreCount: 1,
+            plantCount: 20,
+            socialMode: "solitary" as const,
+        };
+        const world = new World(config);
+        const herb = world.entities.find((e) => e.species.kind === "herbivore")!;
+        const carn = world.entities.find((e) => e.species.kind === "carnivore")!;
+
+        herb.pos.x = 50;
+        herb.pos.y = 50;
+        carn.pos.x = 52;
+        carn.pos.y = 50;
+
+        // Switch to pack with half cohesion (0.5)
+        world.setSocialMode("pack", 0.5);
+        expect(world.config.socialMode).toBe("pack");
+        expect(world.config.socialCohesion).toBe(0.5);
+
+        world.tickStep();
+
+        const alarm = world.socialGrid.queryAlarm(50, 50, 10);
+        expect(alarm).not.toBeNull();
+        expect(alarm!.intensity).toBeCloseTo(0.5 * (1 - 0.05), 1);
+    });
 });
