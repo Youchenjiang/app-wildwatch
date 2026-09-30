@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { OrthographicCamera, Scene, type WebGLRenderer } from "three";
+import { OrthographicCamera, Scene, Vector3, type WebGLRenderer } from "three";
 import { ObserverCamera } from "../src/render/camera";
 import { resizeContext, type RenderContext } from "../src/render/scene";
 
@@ -7,6 +7,15 @@ import { resizeContext, type RenderContext } from "../src/render/scene";
 function renderContext(): RenderContext {
     const view = 144; // max(width, height) * 0.72 for the 200x200 default world
     const camera = new OrthographicCamera(-view, view, view, -view, 0.1, 500);
+    // Framed the way createRenderContext frames it — oblique, looking at the
+    // middle of the world. A wheel's zoom is anchored on the ground under a
+    // pixel, so a camera that is not pointed at the ground has none to anchor.
+    const centre = new Vector3(100, 0, 100);
+    camera.position.copy(centre).add(new Vector3(-42, 118, 42));
+    camera.lookAt(centre);
+    (camera.userData as { baseOffset?: Vector3 }).baseOffset = camera.position
+        .clone()
+        .sub(centre);
     const renderer = { setSize: vi.fn() } as unknown as WebGLRenderer;
     return {
         camera,
@@ -58,11 +67,17 @@ function stubWindow(): void {
     vi.stubGlobal("window", { addEventListener: vi.fn(), removeEventListener: vi.fn() });
 }
 
+/** Centre of the stubbed 640x360 viewport, in client pixels. */
+const CENTRE = { x: 320, y: 180 };
+
 /** An observer attached to a real listener stub, plus a way to send it a wheel. */
 function wiredObserver(): {
     ctx: RenderContext;
     observer: ObserverCamera;
-    scroll: (deltaY: number) => { preventDefault: ReturnType<typeof vi.fn> };
+    scroll: (
+        deltaY: number,
+        at?: { x: number; y: number },
+    ) => { preventDefault: ReturnType<typeof vi.fn> };
     listenerCount: (type: string) => number;
 } {
     stubWindow();
@@ -72,8 +87,8 @@ function wiredObserver(): {
     return {
         ctx,
         observer,
-        scroll: (deltaY) => {
-            const event = { deltaY, preventDefault: vi.fn() };
+        scroll: (deltaY, at = CENTRE) => {
+            const event = { deltaY, clientX: at.x, clientY: at.y, preventDefault: vi.fn() };
             stub.fire("wheel", event);
             return event;
         },
@@ -186,5 +201,109 @@ describe("wheel zoom direction", () => {
         expect(event.preventDefault).toHaveBeenCalledTimes(1);
         observer.dispose();
         expect(listenerCount("wheel")).toBe(0);
+    });
+});
+
+describe("wheel zoom at the pointer", () => {
+    /** The pixel a world point is drawn at, which is what a wheel aims at. */
+    const heldAt = (observer: ObserverCamera, x: number, z: number) => observer.screenPoint(x, z);
+
+    it("keeps the world point under the cursor exactly where it is", () => {
+        const { observer, scroll } = wiredObserver();
+        observer.apply();
+        // Off to one side of the middle: a point at the centre barely moves
+        // under either behaviour, so it could not tell them apart.
+        const held = { x: 150, z: 140 };
+        const at = heldAt(observer, held.x, held.z);
+        expect(Math.abs(at.x - CENTRE.x), "the wheel has to land off-centre").toBeGreaterThan(20);
+
+        scroll(-120, at);
+        // The frame loop's own call, so the check covers where the camera is
+        // actually put and not only the projection.
+        observer.apply();
+
+        const after = heldAt(observer, held.x, held.z);
+        expect(observer.getZoom(), "the wheel has to zoom in").toBeCloseTo(1.12, 9);
+        expect(
+            Math.hypot(after.x - at.x, after.y - at.y),
+            "the world point under the pointer moved",
+        ).toBeLessThan(0.05);
+        expect(
+            observer.viewState().panX,
+            "zooming off-centre has to reframe the view",
+        ).not.toBeCloseTo(0, 6);
+        observer.dispose();
+    });
+
+    it("pins the point through a scroll back out, so the view returns to where it was", () => {
+        const { observer, scroll } = wiredObserver();
+        observer.apply();
+        const held = { x: 150, z: 140 };
+        const at = heldAt(observer, held.x, held.z);
+
+        scroll(-120, at);
+        observer.apply();
+        const zoomedIn = observer.viewState();
+        scroll(120, at);
+        observer.apply();
+
+        expect(zoomedIn.panX, "the zoom in really did reframe").not.toBeCloseTo(0, 6);
+        expect(observer.getZoom()).toBeCloseTo(1, 9);
+        expect(observer.viewState().panX).toBeCloseTo(0, 9);
+        expect(observer.viewState().panZ).toBeCloseTo(0, 9);
+        const after = heldAt(observer, held.x, held.z);
+        expect(Math.hypot(after.x - at.x, after.y - at.y)).toBeLessThan(0.05);
+        observer.dispose();
+    });
+
+    it("leaves the view alone when the wheel is at the middle", () => {
+        // The centre of the screen is the camera's own target, so there is
+        // nothing to correct there — an anchored zoom and the old centred one
+        // agree exactly.
+        const { observer, scroll } = wiredObserver();
+        observer.apply();
+
+        scroll(-120);
+
+        expect(observer.getZoom()).toBeCloseTo(1.12, 9);
+        expect(observer.viewState().panX).toBeCloseTo(0, 9);
+        expect(observer.viewState().panZ).toBeCloseTo(0, 9);
+        observer.dispose();
+    });
+
+    it("leaves the framing to a follow rather than to the pointer", () => {
+        const { observer, scroll } = wiredObserver();
+        observer.follow(7);
+        observer.updateFromSim(150, 140);
+        observer.apply();
+        const at = heldAt(observer, 150, 140);
+
+        scroll(-120, at);
+        observer.apply();
+
+        expect(observer.getZoom()).toBeCloseTo(1.12, 9);
+        // The camera is aimed at the animal, not at the pan, so the anchor has
+        // nothing of its own to move — and must not move the pan behind the
+        // scenes for the moment the follow is released.
+        expect(observer.viewState().panX).toBeCloseTo(0, 9);
+        expect(observer.viewState().panZ).toBeCloseTo(0, 9);
+        observer.dispose();
+    });
+
+    it("keeps the pan inside the world however far the pointer is", () => {
+        const { observer, scroll } = wiredObserver();
+        observer.apply();
+        // The viewport's own corner: at the default framing the ground under it
+        // is well outside the world, so the correction asks to pan past the
+        // edge. It has to stop where a drag would.
+        for (let stepIndex = 0; stepIndex < 40; stepIndex++) scroll(-120, { x: 0, y: 0 });
+        observer.apply();
+
+        const state = observer.viewState();
+        expect(observer.getZoom()).toBeCloseTo(12, 9);
+        expect(Math.abs(state.panX), "the pan left the world").toBeLessThanOrEqual(100);
+        expect(Math.abs(state.panZ), "the pan left the world").toBeLessThanOrEqual(100);
+        expect(Math.hypot(state.panX, state.panZ), "the pan never moved").toBeGreaterThan(20);
+        observer.dispose();
     });
 });

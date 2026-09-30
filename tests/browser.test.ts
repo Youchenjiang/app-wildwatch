@@ -398,6 +398,44 @@ describe("observer controls in a real browser", () => {
         }
     });
 
+    scenario("keeps the animal under the wheel pinned while the view zooms in", async (page) => {
+        await resetView(page);
+        // Paused: the animal has to hold still for the measurement.
+        if ((await probe<string>(page, "hudState()")) !== "已暫停") {
+            await page.press("Space");
+            await page.waitFor("window.__probe.hudState() === '已暫停'", "the run to pause");
+        }
+        // Well clear of the middle, because a point at the middle hardly moves
+        // under either behaviour and could not tell them apart.
+        const target = await probe<{ id: number; x: number; y: number } | null>(
+            page,
+            "animalOnCanvas(60)",
+        );
+        expect(target, "an animal drew clear of the overlays").not.toBeNull();
+        if (!target) return;
+        const pinned = { x: target.x, y: target.y };
+        const before = await view(page);
+
+        for (let wheelIndex = 0; wheelIndex < 3; wheelIndex++) await page.wheel(-120, pinned);
+        await page.evaluate("window.__probe.waitFrames(2)");
+
+        const after = await view(page);
+        const drawn = await probe<Point | null>(page, `animalScreenPoint(${target.id})`);
+        expect(drawn, "the animal under the pointer is still alive").not.toBeNull();
+        if (!drawn) return;
+        expect(after.zoom, "the wheel has to zoom in").toBeGreaterThan(before.zoom * 1.3);
+        // The regression this guards: the zoom used to be about the view centre,
+        // so whatever the player pointed at slid away as the view pulled in.
+        expect(
+            Math.hypot(after.panX - before.panX, after.panZ - before.panZ),
+            "an off-centre zoom has to reframe the view, or this proves nothing",
+        ).toBeGreaterThan(1);
+        expect(
+            Math.hypot(drawn.x - pinned.x, drawn.y - pinned.y),
+            "the animal under the cursor must stay under it",
+        ).toBeLessThan(4);
+    });
+
     scenario("pans with a real drag, moving the world with the pointer", async (page) => {
         await resetView(page);
         const start = await centrePoint(page);
