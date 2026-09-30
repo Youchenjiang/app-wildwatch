@@ -1,14 +1,27 @@
 import * as THREE from "three";
 
 /**
- * Observer camera for an orthographic god view: wheel zoom, drag to pan,
- * optional follow of a selected entity, reset to the default framing. Purely
- * visual — never touches the simulation.
+ * Observer camera for an orthographic god view: wheel zoom at the pointer,
+ * drag to pan, optional follow of a selected entity, reset to the default
+ * framing. Purely visual — never touches the simulation.
  *
  * `viewState` and `screenPoint` exist so something outside the app (the
  * browser harness in `tests/browser.test.ts`, or the console) can see what the
  * camera did and aim a real pointer at a specific animal.
  */
+
+/**
+ * A pointer position in client pixels: what a wheel's zoom is anchored on.
+ * A `WheelEvent` satisfies this as it stands.
+ */
+export interface ZoomAnchor {
+    readonly clientX: number;
+    readonly clientY: number;
+}
+
+/** How far out and in the observer may zoom, as factors of the default framing. */
+const ZOOM_MIN = 0.6;
+const ZOOM_MAX = 12;
 export interface ObserverViewState {
     /** Zoom factor, 1 = the whole-world framing the context was created with. */
     zoom: number;
@@ -55,9 +68,10 @@ export class ObserverCamera {
         const onWheel = (event: WheelEvent): void => {
             event.preventDefault();
             // Scroll up (negative deltaY) pulls the view closer, scroll down
-            // pushes it away — the direction every map and canvas tool uses.
+            // pushes it away — the direction every map and canvas tool uses,
+            // and what it pulls closer is what is under the cursor.
             const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
-            this.setZoom(this.zoomFactor * factor);
+            this.setZoom(this.zoomFactor * factor, event);
         };
         const onDown = (event: PointerEvent): void => {
             if (event.button !== 0) return;
@@ -77,8 +91,7 @@ export class ObserverCamera {
             const rect = this.dom.getBoundingClientRect();
             const worldPerPx = (2 * this.viewHeight()) / rect.height;
             // Screen right/up maps to world (x, -z) in this top-down view.
-            this.panX = clamp(this.panX - dx * worldPerPx, -this.worldWidth / 2, this.worldWidth / 2);
-            this.panZ = clamp(this.panZ - dy * worldPerPx, -this.worldHeight / 2, this.worldHeight / 2);
+            this.panBy(-dx * worldPerPx, -dy * worldPerPx);
         };
         const onUp = (): void => {
             this.dragging = false;
@@ -100,9 +113,65 @@ export class ObserverCamera {
         return this.defaultView / this.zoomFactor;
     }
 
-    setZoom(factor: number): void {
-        this.zoomFactor = Math.min(12, Math.max(0.6, factor));
+    /**
+     * Zoom, keeping the world point under `at` pinned to that pixel.
+     *
+     * A wheel is a gesture at a place, so the place is what gets pulled closer:
+     * whatever the player pointed at stays under the cursor, the way every map
+     * and canvas tool behaves. Zooming about the view centre is this call with
+     * no anchor, which is what the debug handle and the harness use.
+     *
+     * A follow owns the framing — `apply` aims the camera at the animal rather
+     * than at the pan — so while one is on the zoom stays centred on the animal
+     * being watched. Anchoring on the pointer would mean moving a pan the
+     * camera is ignoring: invisible at the time, and then a jump the player
+     * never asked for when the follow ends.
+     */
+    setZoom(factor: number, at?: ZoomAnchor): void {
+        const anchor = at && this.followId === null ? at : null;
+        const held = anchor ? this.groundPoint(anchor) : null;
+        this.zoomFactor = clamp(factor, ZOOM_MIN, ZOOM_MAX);
         this.applyProjection();
+        if (anchor && held) {
+            const now = this.groundPoint(anchor);
+            // The world point under a given pixel is the camera's target plus a
+            // constant offset for that pixel, so moving the target by the
+            // difference puts the held point back under the pointer exactly.
+            if (now) this.panBy(held.x - now.x, held.z - now.z);
+        }
+    }
+
+    /**
+     * Move the view centre by (dx, dz) world units, clamped to the world.
+     *
+     * A drag obeys that clamp, and an anchored zoom obeys it too: at the world's
+     * edge the two cannot both hold, so the view stops at the edge rather than
+     * drifting off into the empty space around the world.
+     */
+    private panBy(dx: number, dz: number): void {
+        this.panX = clamp(this.panX + dx, -this.worldWidth / 2, this.worldWidth / 2);
+        this.panZ = clamp(this.panZ + dz, -this.worldHeight / 2, this.worldHeight / 2);
+    }
+
+    /**
+     * The point on the ground (y = 0) drawn under a client pixel, or null when
+     * the camera is edge-on to the ground and no point is under it.
+     */
+    private groundPoint(at: ZoomAnchor): { x: number; z: number } | null {
+        const rect = this.dom.getBoundingClientRect();
+        const ndcX = ((at.clientX - rect.left) / rect.width) * 2 - 1;
+        const ndcY = 1 - ((at.clientY - rect.top) / rect.height) * 2;
+        // Two points on the pixel's own ray: an orthographic camera's rays do
+        // not fan out, so the ground is a single intersection with that line.
+        // The matrices `unproject` reads are refreshed by the renderer's own
+        // render, which has not run yet on the very first frame.
+        this.camera.updateMatrixWorld();
+        const near = new THREE.Vector3(ndcX, ndcY, -1).unproject(this.camera);
+        const far = new THREE.Vector3(ndcX, ndcY, 1).unproject(this.camera);
+        const rise = far.y - near.y;
+        if (Math.abs(rise) < 1e-9) return null;
+        const fraction = -near.y / rise;
+        return { x: near.x + (far.x - near.x) * fraction, z: near.z + (far.z - near.z) * fraction };
     }
 
     getZoom(): number {
