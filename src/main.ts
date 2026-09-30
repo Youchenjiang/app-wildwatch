@@ -15,11 +15,16 @@ import { createControls } from "./ui/controls";
 import { createInspector } from "./ui/inspector";
 import { createWelcome } from "./ui/welcome";
 import { ReplayRecorder } from "./observe/replay";
+import { DEFAULT_TICKS_PER_SECOND, SPEED_STEPS, advanceTicks } from "./observe/pacing";
 import { desertEra, grasslandEra, iceAgeEra } from "./sim/era";
 
 import type { EraConfig } from "./sim/era";
 
-const container = document.getElementById("app")!;
+const appElement = document.getElementById("app");
+if (!appElement) {
+    throw new Error("Missing #app element");
+}
+const container = appElement;
 
 /** Atmosphere colors for the active era, or the neutral default with no era. */
 function eraAtmosphereColors(era?: EraConfig) {
@@ -36,39 +41,23 @@ let ctx: RenderContext = createRenderContext(
 const pool = new MeshPool(ctx.scene, world.config.era);
 const observerCam = new ObserverCamera(ctx.camera, ctx.renderer.domElement, world.config.width, world.config.height);
 const hud = createHud(container);
-const controls = createControls(container, {
-    onPauseToggle: () => {
-        paused = !paused;
-    },
-    onSpeedChange: (dir) => {
-        ticksPerFrame = Math.min(60, Math.max(1, ticksPerFrame + dir * 5));
-        controls.setSpeed(ticksPerFrame);
-    },
-    onReplayScrub: (frameIndex) => {
-        replayIndex = frameIndex;
-    },
-    onReplayExit: () => {
-        replayIndex = null;
-    },
-    onCameraReset: () => {
-        observerCam.resetView();
-        inspector.hide();
-    },
-    onEndRun: () => {
-        world.terminate();
-    },
-});
 const inspector = createInspector(container);
 const recorder = new ReplayRecorder(1, 3600);
 
-let ticksPerFrame = 10;
+// The run advances by accumulated wall-clock time, not a fixed number of ticks
+// per frame, so a speed slower than one tick per frame is expressible at all.
+let speedIndex = Math.max(0, SPEED_STEPS.indexOf(DEFAULT_TICKS_PER_SECOND));
+let tickCarry = 0;
+let lastFrameMs = performance.now();
 let paused = true;
 let replayIndex: number | null = null;
 
 // Welcome screen: pick an era and how the populations propagate, then start.
+// The picker is reopened by 換設定, so these two outlive the first choice —
+// they are what `R 重新投放` re-drops the animals with.
 let selectedEra: import("./sim/era").EraConfig | undefined;
 let selectedReproduction: import("./sim/world").ReproductionMode = "asexual";
-createWelcome(
+const welcome = createWelcome(
     container,
     (era, reproduction) => {
         selectedEra = era;
@@ -80,17 +69,47 @@ createWelcome(
     },
     [grasslandEra, iceAgeEra, desertEra],
 );
+welcome.show();
+
+const controls = createControls(container, {
+    onPauseToggle: () => {
+        paused = !paused;
+    },
+    onSpeedChange: (step) => {
+        speedIndex = Math.min(SPEED_STEPS.length - 1, Math.max(0, speedIndex + step));
+        controls.setSpeed(SPEED_STEPS[speedIndex]);
+    },
+    onReplayScrub: (frameIndex) => {
+        replayIndex = frameIndex;
+    },
+    onReplayExit: () => {
+        replayIndex = null;
+    },
+    onCameraReset: () => {
+        observerCam.resetView();
+        inspector.hide();
+    },
+    onChangeSetup: () => {
+        welcome.show({ era: world.config.era, reproduction: world.config.reproduction });
+    },
+    onEndRun: () => {
+        world.terminate();
+    },
+});
 
 window.addEventListener("keydown", (event) => {
+    // While the picker is up it owns the keyboard, so a Space or R meant for
+    // the card in front of the player cannot silently re-seed what is behind.
+    if (welcome.isOpen()) return;
     if (event.code === "Space") {
         paused = !paused;
         event.preventDefault();
     } else if (event.key === "+" || event.key === "=") {
-        ticksPerFrame = Math.min(60, ticksPerFrame + 5);
-        controls.setSpeed(ticksPerFrame);
+        speedIndex = Math.min(SPEED_STEPS.length - 1, speedIndex + 1);
+        controls.setSpeed(SPEED_STEPS[speedIndex]);
     } else if (event.key === "-" || event.key === "_") {
-        ticksPerFrame = Math.max(1, ticksPerFrame - 5);
-        controls.setSpeed(ticksPerFrame);
+        speedIndex = Math.max(0, speedIndex - 1);
+        controls.setSpeed(SPEED_STEPS[speedIndex]);
     } else if (event.key === "r" || event.key === "R") {
         restart();
     } else if (event.key === "Escape") {
@@ -104,15 +123,15 @@ window.addEventListener("keydown", (event) => {
 // as a click when the pointer barely moved between down and up).
 let downX = 0;
 let downY = 0;
-ctx.renderer.domElement.addEventListener("pointerdown", (e) => {
-    downX = e.clientX;
-    downY = e.clientY;
+ctx.renderer.domElement.addEventListener("pointerdown", (event) => {
+    downX = event.clientX;
+    downY = event.clientY;
 });
-ctx.renderer.domElement.addEventListener("pointerup", (e) => {
-    if (Math.hypot(e.clientX - downX, e.clientY - downY) > 4) return; // it was a drag
+ctx.renderer.domElement.addEventListener("pointerup", (event) => {
+    if (Math.hypot(event.clientX - downX, event.clientY - downY) > 4) return; // it was a drag
     const rect = ctx.renderer.domElement.getBoundingClientRect();
-    const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-    const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    const ndcX = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    const ndcY = -((event.clientY - rect.top) / rect.height) * 2 + 1;
     selectSubject(pool.pick(ndcX, ndcY, ctx.camera));
 });
 
@@ -123,6 +142,7 @@ function restart(): void {
     ctx.atmosphere.setColors(eraAtmosphereColors(world.config.era));
 
     pool.setEra(world.config.era);
+    tickCarry = 0;
     recorder.reset();
     pool.reset();
     replayIndex = null;
@@ -136,25 +156,34 @@ function restart(): void {
 // keeps the stride smooth regardless of tick speed or frame rate.
 const animStart = performance.now();
 
-function stepSimulation(): void {
-    if (paused || world.gameOver !== null) return;
-    for (let i = 0; i < ticksPerFrame; i++) {
-        if (world.gameOver !== null) break;
-        world.tickStep();
-        if (recorder.shouldCapture(world.tick)) recorder.capture(world);
+function stepSimulation(nowMs: number): void {
+    const running = !paused && world.gameOver === null;
+    if (running) {
+        const advance = advanceTicks(tickCarry, SPEED_STEPS[speedIndex], (nowMs - lastFrameMs) / 1000);
+        tickCarry = advance.carry;
+        for (let tickIndex = 0; tickIndex < advance.ticks; tickIndex++) {
+            if (world.gameOver !== null) break;
+            world.tickStep();
+            if (recorder.shouldCapture(world.tick)) recorder.capture(world);
+        }
+    } else {
+        // Drop the leftover rather than banking it: a long pause should not
+        // come back as a burst of catch-up ticks on the first unpaused frame.
+        tickCarry = 0;
     }
+    lastFrameMs = nowMs;
 }
 
 function renderReplay(targetIndex: number, animTime: number): void {
     const frames = recorder.size;
     if (frames > 0) {
-        const idx = Math.min(Math.max(0, targetIndex), frames - 1);
-        const f = recorder.frameAt(idx);
-        if (f) {
-            pool.syncFrame(f, inspector.selectedId(), animTime);
-            ctx.atmosphere.syncSeason(f.seasonAbundance);
-            hud.update(world, paused, f);
-            controls.setReplayIndex(idx, frames);
+        const frameIndex = Math.min(Math.max(0, targetIndex), frames - 1);
+        const recordedFrame = recorder.frameAt(frameIndex);
+        if (recordedFrame) {
+            pool.syncFrame(recordedFrame, inspector.selectedId(), animTime);
+            ctx.atmosphere.syncSeason(recordedFrame.seasonAbundance);
+            hud.update(world, paused, recordedFrame);
+            controls.setReplayIndex(frameIndex, frames);
         }
     }
     inspector.update(null);
@@ -173,9 +202,10 @@ function renderLive(animTime: number): void {
 }
 
 function frame(): void {
-    const animTime = (performance.now() - animStart) / 1000;
+    const nowMs = performance.now();
+    const animTime = (nowMs - animStart) / 1000;
     const replayIndexNow = replayIndex;
-    stepSimulation();
+    stepSimulation(nowMs);
     if (replayIndexNow !== null) {
         renderReplay(replayIndexNow, animTime);
     } else {
@@ -216,7 +246,7 @@ function selectSubject(id: number | null): void {
 
 /** Whether an id belongs to a plant rather than an animal. */
 function isPlant(id: number): boolean {
-    return world.plants.some((p) => p.id === id);
+    return world.plants.some((plant) => plant.id === id);
 }
 
 // Debug handles so the sim and observer tools can be poked from the console.
@@ -226,10 +256,10 @@ function selectEntity(id: number | null): void {
 (window as unknown as { world?: World }).world = world;
 (window as unknown as { __obs?: unknown }).__obs = {
     select: selectEntity,
-    replay: (i: number | null) => {
-        replayIndex = i;
+    replay: (frameIdx: number | null) => {
+        replayIndex = frameIdx;
     },
-    zoom: (f: number) => observerCam.setZoom(f),
+    zoom: (factor: number) => observerCam.setZoom(factor),
     resetView: () => observerCam.resetView(),
     recorder: () => recorder.stats(),
     restart,

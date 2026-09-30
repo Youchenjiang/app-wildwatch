@@ -1,9 +1,15 @@
 /**
- * Welcome screen shown on first load. Gives the player a brief orientation
- * before the simulation starts.
+ * Welcome screen: the one place a run's seeding is chosen.
  *
- * Era picker: the player chooses a scenario era (grassland, ice age, …).
- * The selected era is passed to onStart so the run can be seeded with it.
+ * It is not a first-load splash but a picker that can be reopened. `重新投放`
+ * (R) re-drops the animals with the settings already in force, and this screen
+ * is how those settings change, so a run is never stuck with the era or the
+ * reproduction mode it happened to start with.
+ *
+ * That is why the component returns a handle rather than hiding itself once:
+ * the picker used to be shown at load, hidden on start and never seen again,
+ * which left the mode frozen for the life of the page even though the overlay
+ * was still sitting in the DOM with a mode card highlighted.
  */
 import type { EraConfig } from "../sim/era";
 import type { ReproductionMode } from "../sim/world";
@@ -26,11 +32,46 @@ export const REPRODUCTION_MODES: ReadonlyArray<{
     },
 ];
 
+export interface PickerSelection {
+    era: EraConfig | undefined;
+    mode: ReproductionMode;
+}
+
+/** What the picker should open on, given what is (or was last) running. */
+export interface WelcomeCurrent {
+    era?: EraConfig;
+    reproduction?: ReproductionMode;
+}
+
+/**
+ * Resolve the current run's settings into cards the picker can actually show.
+ *
+ * Both fall back rather than demand: a run seeded with no era has no card to
+ * preselect, and a mode that a later change removed from the list (the mixed
+ * mode was one) must not leave the picker with nothing selected. Matching the
+ * era by name keeps this working across the config objects a restart makes.
+ */
+export function preselect(
+    eras: ReadonlyArray<EraConfig>,
+    current: WelcomeCurrent = {},
+): PickerSelection {
+    const era = eras.find((eraItem) => eraItem.name === current.era?.name) ?? eras[0];
+    const mode = REPRODUCTION_MODES.find((modeItem) => modeItem.mode === current.reproduction)?.mode;
+    return { era, mode: mode ?? REPRODUCTION_MODES[0].mode };
+}
+
+export interface Welcome {
+    /** Open the picker, preselecting what is currently running. */
+    show(current?: WelcomeCurrent): void;
+    /** True while the picker is open and therefore owns the keyboard. */
+    isOpen(): boolean;
+}
+
 export function createWelcome(
     container: HTMLElement,
     onStart: (era: EraConfig | undefined, reproduction: ReproductionMode) => void,
     eras: ReadonlyArray<EraConfig>,
-): void {
+): Welcome {
     const el = document.createElement("div");
     el.id = "welcome";
     const modeCards = REPRODUCTION_MODES.map(
@@ -73,57 +114,93 @@ export function createWelcome(
 
     let selectedEra: EraConfig | undefined = eras[0];
     let selectedMode: ReproductionMode = REPRODUCTION_MODES[0].mode;
+    let open = false;
     const modeDescEl = el.querySelector<HTMLElement>("#mode-desc");
     const modeButtons = el.querySelectorAll<HTMLButtonElement>(".mode-card");
+    const cards = el.querySelectorAll<HTMLButtonElement>(".era-card");
+
     const showModeDesc = (): void => {
         if (!modeDescEl) return;
         modeDescEl.textContent =
             REPRODUCTION_MODES.find((modeItem) => modeItem.mode === selectedMode)?.desc ?? "";
     };
+    /** Repaint both groups from the selection, so state and screen agree. */
+    const render = (): void => {
+        for (const button of modeButtons) {
+            button.classList.toggle("on", button.dataset["mode"] === selectedMode);
+        }
+        for (const card of cards) {
+            card.classList.toggle("era-selected", card.dataset["era"] === selectedEra?.name);
+        }
+        showModeDesc();
+    };
+
     for (const button of modeButtons) {
         button.addEventListener("click", () => {
-            const mode = button.dataset.mode;
+            const mode = button.dataset["mode"];
             if (mode) {
                 selectedMode = mode as ReproductionMode;
-                for (const btn of modeButtons) btn.classList.toggle("on", btn === button);
-                showModeDesc();
+                render();
             }
         });
     }
-    // Seed the default as selected, the same way the era picker does.
-    if (modeButtons[0]) modeButtons[0].classList.add("on");
-    showModeDesc();
-
-    const cards = el.querySelectorAll<HTMLButtonElement>(".era-card");
-    // Mark the first card as selected by default.
-    if (cards[0]) cards[0].classList.add("era-selected");
     for (const card of cards) {
         card.addEventListener("click", () => {
-            const eraName = card.dataset.era;
+            const eraName = card.dataset["era"];
             if (eraName) {
                 selectedEra = eras.find((eraItem) => eraItem.name === eraName) ?? eras[0];
-                for (const cardItem of cards) cardItem.classList.toggle("era-selected", cardItem === card);
+                render();
             }
         });
+    }
+
+    /**
+     * Enter or Space starts with the current selection. Registered only while
+     * the picker is open: it used to be attached at construction and removed
+     * only by dismissing itself, so clicking 開始觀察 left it listening, and the
+     * next Space press — meant to pause the run — re-seeded the world instead.
+     */
+    const dismiss = (event: KeyboardEvent): void => {
+        if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            start();
+        }
+    };
+
+    function start(): void {
+        const era = selectedEra;
+        const mode = selectedMode;
+        close();
+        onStart(era, mode);
+    }
+
+    function close(): void {
+        el.hidden = true;
+        open = false;
+        window.removeEventListener("keydown", dismiss);
     }
 
     const startButton = el.querySelector<HTMLButtonElement>("#welcome-start");
     if (startButton) {
-        startButton.addEventListener("click", () => {
-            el.hidden = true;
-            onStart(selectedEra, selectedMode);
-        });
+        startButton.addEventListener("click", () => start());
     }
 
-    // Also dismiss on any key (Enter/Space starts with current selection)
-    const dismiss = (event: KeyboardEvent) => {
-        if (event.key === "Enter" || event.key === " ") {
-            el.hidden = true;
-            onStart(selectedEra, selectedMode);
+    return {
+        show(current: WelcomeCurrent = {}): void {
+            const pick = preselect(eras, current);
+            selectedEra = pick.era;
+            selectedMode = pick.mode;
+            render();
+            el.hidden = false;
+            open = true;
+            // Remove first so a second show() cannot stack listeners.
             window.removeEventListener("keydown", dismiss);
-        }
+            window.addEventListener("keydown", dismiss);
+        },
+        isOpen(): boolean {
+            return open;
+        },
     };
-    window.addEventListener("keydown", dismiss);
 }
 
 function eraDescription(era: EraConfig): string {
@@ -138,4 +215,3 @@ function eraDescription(era: EraConfig): string {
             return era.name;
     }
 }
-
