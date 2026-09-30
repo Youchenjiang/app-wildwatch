@@ -147,22 +147,22 @@ export function createInspector(container: HTMLElement): EntityInspector {
      * The tuft card. `bites` is the sim's own countdown, so "how many bites
      * left" is read rather than recomputed from a remainder.
      */
-    function renderPlant(p: Plant, world: World, frozenNow: boolean): void {
+    function renderPlant(plant: Plant, world: World, frozenNow: boolean): void {
         const params = world.plantParams;
-        const route = p.route === "sprout" ? "走莖（長在母株旁）" : "種子（隨機落地）";
+        const route = plant.route === "sprout" ? "走莖（長在母株旁）" : "種子（隨機落地）";
         card.innerHTML = `
             <div class="insp-head">
                 <span class="dot plant"></span>
-                <span>草叢 #${p.id}</span>
+                <span>草叢 #${plant.id}</span>
                 <button id="insp-close" title="關閉">✕</button>
             </div>
             <div class="insp-rows">
-                <div><span>剩餘口數</span><b>${p.bites} / ${params.bites}</b></div>
-                <div><span>能量</span><b>${p.energy.toFixed(1)} / ${params.energy}（每口 ${params.biteEnergy.toFixed(1)}）</b></div>
-                <div><span>年齡</span><b>${world.tick - p.bornTick} ticks</b></div>
+                <div><span>剩餘口數</span><b>${plant.bites} / ${params.bites}</b></div>
+                <div><span>能量</span><b>${plant.energy.toFixed(1)} / ${params.energy}（每口 ${params.biteEnergy.toFixed(1)}）</b></div>
+                <div><span>年齡</span><b>${world.tick - plant.bornTick} ticks</b></div>
                 <div><span>可繁殖</span><b>隨時（無成熟期）</b></div>
                 <div><span>來源</span><b>${route}</b></div>
-                ${frozenNow ? `<div class="insp-frozen">☠ 已被吃完（或重播檢視）— 顯示最後快照</div>` : ""}
+                ${frozenNow ? '<div class="insp-frozen">☠ 已被吃完（或重播檢視）— 顯示最後快照</div>' : ""}
             </div>
         `;
         card.querySelector("#insp-close")?.addEventListener("click", () => cardOwner().hide());
@@ -171,7 +171,8 @@ export function createInspector(container: HTMLElement): EntityInspector {
     // Slight indirection so the close button can call hide() before assignment completes.
     let selfRef: EntityInspector | null = null;
     function cardOwner(): EntityInspector {
-        return selfRef!;
+        if (!selfRef) throw new Error("Inspector not initialized");
+        return selfRef;
     }
 
     const inspector: EntityInspector = {
@@ -196,14 +197,14 @@ export function createInspector(container: HTMLElement): EntityInspector {
             if (world === null) {
                 return;
             }
-            const e = world.entities.find((x) => x.id === current && x.alive);
-            if (!e) {
+            const targetEntity = world.entities.find((candidate) => candidate.id === current && candidate.alive);
+            if (!targetEntity) {
                 // A selected id that is not an animal may be a tuft: plants and
                 // animals share the sim's id space, so the click needs no kind.
-                const p = world.plants.find((x) => x.id === current && x.alive);
-                if (p) {
-                    cachedPlant = p;
-                    renderPlant(p, world, false);
+                const targetPlant = world.plants.find((candidate) => candidate.id === current && candidate.alive);
+                if (targetPlant) {
+                    cachedPlant = targetPlant;
+                    renderPlant(targetPlant, world, false);
                     return;
                 }
                 // The subject left the world (eaten, killed, or we are in
@@ -214,10 +215,10 @@ export function createInspector(container: HTMLElement): EntityInspector {
                 return;
             }
             cachedPlant = null;
-            cached = e;
-            cachedRows = memoryRows(e, world);
-            cachedMeals = [...e.meals.recent(MEAL_ROWS)];
-            render(e, false, cachedRows, cachedMeals);
+            cached = targetEntity;
+            cachedRows = memoryRows(targetEntity, world);
+            cachedMeals = [...targetEntity.meals.recent(MEAL_ROWS)];
+            render(targetEntity, false, cachedRows, cachedMeals);
         },
         selectedId(): number | null {
             return current;

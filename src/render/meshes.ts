@@ -129,8 +129,8 @@ const PLANT_GRAZED_SCALE = 0.55;
  * to disappear.
  */
 export function plantBiteScale(remaining: number): number {
-    const r = Math.min(1, Math.max(0, remaining));
-    return PLANT_GRAZED_SCALE + (1 - PLANT_GRAZED_SCALE) * r;
+    const ratio = Math.min(1, Math.max(0, remaining));
+    return PLANT_GRAZED_SCALE + (1 - PLANT_GRAZED_SCALE) * ratio;
 }
 
 /** Seconds a corpse takes to be pulled into the animal eating it. */

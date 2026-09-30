@@ -137,26 +137,26 @@ function installProbe(): void {
         // A tuft to click: plants are picked with a little slop, so a tuft near
         // the middle is the easiest thing in the world to aim at.
         plantOnCanvas(minDistanceFromCentre: number): { id: number; x: number; y: number; bites: number } | null {
-            const r = rect();
-            const cx = r.left + r.width / 2;
-            const cy = r.top + r.height / 2;
+            const bounds = rect();
+            const centreX = bounds.left + bounds.width / 2;
+            const centreY = bounds.top + bounds.height / 2;
             let best: { id: number; x: number; y: number; bites: number; distance: number } | null = null;
             for (const plant of globals.world.plants) {
-                const p = globals.__obs.screenPoint(plant.x, plant.y);
-                if (p.x < r.left + 12 || p.y < r.top + 12 || p.x > r.right - 12 || p.y > r.bottom - 12) {
+                const point = globals.__obs.screenPoint(plant.x, plant.y);
+                if (point.x < bounds.left + 12 || point.y < bounds.top + 12 || point.x > bounds.right - 12 || point.y > bounds.bottom - 12) {
                     continue;
                 }
-                if (!overCanvas(p.x, p.y)) continue;
-                const distance = Math.hypot(p.x - cx, p.y - cy);
+                if (!overCanvas(point.x, point.y)) continue;
+                const distance = Math.hypot(point.x - centreX, point.y - centreY);
                 if (distance < minDistanceFromCentre) continue;
                 if (!best || distance < best.distance) {
-                    best = { id: plant.id, x: p.x, y: p.y, bites: plant.bites, distance };
+                    best = { id: plant.id, x: point.x, y: point.y, bites: plant.bites, distance };
                 }
             }
             return best ? { id: best.id, x: best.x, y: best.y, bites: best.bites } : null;
         },
         plantBites(id: number): number | null {
-            const plant = globals.world.plants.find((p) => p.id === id);
+            const plant = globals.world.plants.find((plantItem) => plantItem.id === id);
             return plant ? plant.bites : null;
         },
         plantScreenPoint(id: number): Point | null {
@@ -500,14 +500,15 @@ describe("observer controls in a real browser", () => {
             await page.waitFor("window.__probe.hudState() === '已暫停'", "the run to pause");
         }
         const at = await centrePoint(page);
-        for (let i = 0; i < 3; i++) await page.wheel(-120, at);
+        for (let scrollStep = 0; scrollStep < 3; scrollStep++) await page.wheel(-120, at);
         const target = await probe<{ id: number; x: number; y: number; bites: number } | null>(
             page,
             "plantOnCanvas(0)",
         );
         expect(target, "a tuft drew clear of the overlays").not.toBeNull();
+        if (!target) throw new Error("target tuft not found");
 
-        await page.click({ x: target!.x, y: target!.y });
+        await page.click({ x: target.x, y: target.y });
         // The click sets the selection in the event handler, but the card is
         // written by the next frame, so wait for the card rather than assuming
         // it is there the moment the pointer event returns.
@@ -523,27 +524,30 @@ describe("observer controls in a real browser", () => {
         const text = await page.evaluate<string>(
             "document.querySelector('#inspector').textContent",
         );
-        const named = /草叢\s*#(\d+)/.exec(text);
+        const named = /草叢\s*#(\d+)/u.exec(text);
         expect(named, "the card must be about a tuft").not.toBeNull();
-        const shown = /剩餘口數\s*(\d+) \/ (\d+)/.exec(text);
+        if (!named) throw new Error("named tuft not found");
+        const shown = /剩餘口數\s*(\d+) \/ (\d+)/u.exec(text);
         expect(shown, "the card must report the tuft's remaining bites").not.toBeNull();
-        expect(shown![2], "a full tuft holds the seeded bites").toBe("3");
+        if (!shown) throw new Error("shown bites not found");
+        expect(shown[2], "a full tuft holds the seeded bites").toBe("3");
 
         // The numbers on the card must be the sim's, for the tuft the card
         // names — a card reporting a stale or neighbouring tuft would still
         // look plausible, which is why this is read back rather than assumed.
-        const selectedId = Number(named![1]);
+        const selectedId = Number(named[1]);
         const live = await probe<number | null>(page, `plantBites(${selectedId})`);
         expect(live, "the card names a tuft that is standing").not.toBeNull();
-        expect(shown![1], "the card shows the bites the sim says are left").toBe(String(live));
+        expect(shown[1], "the card shows the bites the sim says are left").toBe(String(live));
         expect(text, "a tuft is fertile the moment it appears").toContain("隨時（無成熟期）");
 
         // And the click must have landed on the tuft it was aimed at, give or
         // take the pick's own forgiveness.
         const drawn = await probe<Point | null>(page, `plantScreenPoint(${selectedId})`);
         expect(drawn, "the selected tuft is drawn").not.toBeNull();
+        if (!drawn) throw new Error("drawn tuft not found");
         expect(
-            Math.hypot(drawn!.x - target!.x, drawn!.y - target!.y),
+            Math.hypot(drawn.x - target.x, drawn.y - target.y),
             "the selected tuft is the one the click was aimed at",
         ).toBeLessThan(25);
     });

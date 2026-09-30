@@ -8,7 +8,7 @@
  * sim keeps, because the numbers are the easy half.
  */
 import { describe, expect, it } from "vitest";
-import * as THREE from "three";
+import { OrthographicCamera, Scene, Vector3 } from "three";
 import { MeshPool, plantBiteScale } from "../src/render/meshes";
 import { World, type WorldConfig } from "../src/sim/world";
 import { makeSeeding } from "../src/sim/seeding";
@@ -27,8 +27,8 @@ function tuftWorld(plants: number, overrides: Partial<WorldConfig> = {}): World 
 }
 
 /** A camera over the whole world, from the observer's side of the sky. */
-function camera(): THREE.OrthographicCamera {
-    const cam = new THREE.OrthographicCamera(-60, 60, 43, -43, 0.1, 500);
+function camera(): OrthographicCamera {
+    const cam = new OrthographicCamera(-60, 60, 43, -43, 0.1, 500);
     cam.position.set(60, 200, 96);
     cam.lookAt(60, 0, 60);
     cam.updateProjectionMatrix();
@@ -37,15 +37,24 @@ function camera(): THREE.OrthographicCamera {
 }
 
 /** Where a ground point projects to, in NDC — the inverse of a pick. */
-function ndcOf(x: number, y: number, cam: THREE.OrthographicCamera): { x: number; y: number } {
-    const point = new THREE.Vector3(x, 0, y).project(cam);
+function ndcOf(x: number, y: number, cam: OrthographicCamera): { x: number; y: number } {
+    const point = new Vector3(x, 0, y).project(cam);
     return { x: point.x, y: point.y };
+}
+
+function requirePlantMesh(pool: MeshPool, id: number) {
+    const mesh = (pool as unknown as { plantMeshes: Map<number, unknown> }).plantMeshes.get(id);
+    expect(mesh).toBeDefined();
+    if (!mesh) {
+        throw new Error(`Plant mesh ${id} not found`);
+    }
+    return mesh as { scale: { x: number }; position: { y: number } };
 }
 
 describe("picking a tuft", () => {
     it("selects the tuft under the click, and nothing far from it", () => {
         const world = tuftWorld(1);
-        const pool = new MeshPool(new THREE.Scene());
+        const pool = new MeshPool(new Scene());
         pool.sync(world);
         const tuft = world.plants[0];
         const cam = camera();
@@ -61,7 +70,7 @@ describe("picking a tuft", () => {
 
     it("marks the selected tuft with the ring, sized for a tuft", () => {
         const world = tuftWorld(1);
-        const pool = new MeshPool(new THREE.Scene());
+        const pool = new MeshPool(new Scene());
         pool.sync(world);
         const tuft = world.plants[0];
         const ring = pool["ring"];
@@ -85,7 +94,7 @@ describe("picking a tuft", () => {
         config.herbivoreCount = 1;
         config.carnivoreCount = 1;
         const world = new World(config);
-        const pool = new MeshPool(new THREE.Scene());
+        const pool = new MeshPool(new Scene());
         pool.sync(world);
         const animal = world.entities[0];
         pool.select(animal.id);
@@ -111,7 +120,7 @@ describe("picking a tuft", () => {
         const grazer = world.entities[0];
         grazer.pos.x = tuft.x;
         grazer.pos.y = tuft.y;
-        const pool = new MeshPool(new THREE.Scene());
+        const pool = new MeshPool(new Scene());
         pool.sync(world);
         const cam = camera();
         const at = ndcOf(tuft.x, tuft.y, cam);
@@ -132,14 +141,14 @@ describe("a grazed tuft is drawn smaller", () => {
 
     it("draws a one-bite tuft smaller than a fresh one, in the same frame", () => {
         const world = tuftWorld(2);
-        const pool = new MeshPool(new THREE.Scene());
+        const pool = new MeshPool(new Scene());
         const [fresh, grazed] = world.plants;
         grazed.bites = 1;
         grazed.energy = world.plantParams.biteEnergy;
         pool.sync(world);
 
-        const freshMesh = pool["plantMeshes"].get(fresh.id)!;
-        const grazedMesh = pool["plantMeshes"].get(grazed.id)!;
+        const freshMesh = requirePlantMesh(pool, fresh.id);
+        const grazedMesh = requirePlantMesh(pool, grazed.id);
         expect(freshMesh.scale.x).toBeCloseTo(1, 6);
         expect(grazedMesh.scale.x).toBeLessThan(freshMesh.scale.x);
         expect(grazedMesh.scale.x).toBeCloseTo(plantBiteScale(1 / 3), 6);
@@ -151,7 +160,7 @@ describe("a grazed tuft is drawn smaller", () => {
         // Frames record each tuft's remaining energy, so a replay shows the
         // grass the way it stood rather than every tuft freshly grown.
         const world = tuftWorld(1);
-        const pool = new MeshPool(new THREE.Scene());
+        const pool = new MeshPool(new Scene());
         pool.sync(world);
         const tuft = world.plants[0];
         const full = world.plantParams.energy;
@@ -168,8 +177,8 @@ describe("a grazed tuft is drawn smaller", () => {
             seasonAbundance: null,
         };
         pool.syncFrame(frame);
-        const big = pool["plantMeshes"].get(tuft.id)!;
-        const small = pool["plantMeshes"].get(tuft.id + 1)!;
+        const big = requirePlantMesh(pool, tuft.id);
+        const small = requirePlantMesh(pool, tuft.id + 1);
         expect(small.scale.x).toBeLessThan(big.scale.x);
         expect(small.scale.x).toBeCloseTo(plantBiteScale(1 / 3), 6);
     });
