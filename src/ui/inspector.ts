@@ -94,6 +94,7 @@ export function createInspector(container: HTMLElement): EntityInspector {
                 <div><span>速度上限</span><b>${s.speed}</b></div>
                 <div><span>感應範圍</span><b>${s.senseRange}</b></div>
                 <div><span>記憶片段</span><b>${e.memory.size()}</b></div>
+                ${e.isJuvenile ? `<div><span>狀態</span><b style="color:#64b5f6">幼獸（緊隨母體 #${e.motherId}）</b></div>` : ""}
                 ${frozenNow ? `<div class="insp-frozen">☠ 個體已死亡（或重播檢視）— 顯示最後快照</div>` : ""}
             </div>
             <div class="insp-mem-title">記憶 · 最近 ${rows.length} 條</div>

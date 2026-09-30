@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { depthScale, gameOverVeil, kinStatText, updateStateBanner } from "../src/ui/hud";
-import type { TurnRecord } from "../src/sim/world";
+import { createHud, depthScale, formatGodInfo, gameOverVeil, kinStatText, updateStateBanner } from "../src/ui/hud";
+import { World, type TurnRecord } from "../src/sim/world";
+import { makeSeeding } from "../src/sim/seeding";
 
 const depthRecord = (livingMaxDepth: number): TurnRecord => ({ livingMaxDepth }) as TurnRecord;
 
@@ -88,5 +89,30 @@ describe("kin feeding stat", () => {
         expect(kinStatText(4, 3, 1, 0)).toBe("近親取食 3 · 佔腐食 75%");
         // ...and the same when there are no kin meals to break down at all.
         expect(kinStatText(3, 0, 0, 0)).toBe("近親取食 0 · 佔腐食 0%");
+    });
+});
+
+describe("hud god agent integration", () => {
+    it("renders god agent info and responds to social mode", () => {
+        const world = new World({
+            ...makeSeeding(20260907),
+            enableGodAgent: true,
+            socialMode: "pack",
+            socialCohesion: 0.8,
+        });
+
+        const text = formatGodInfo(world);
+        expect(text).toContain("天道神蹟: 0");
+        expect(text).toContain("群居");
+        expect(text).toContain("80%");
+
+        // Test solitary mode
+        world.setSocialMode("solitary");
+        const solitaryText = formatGodInfo(world);
+        expect(solitaryText).toContain("孤狼");
+
+        // Test disabled god agent
+        const legacyWorld = new World(makeSeeding(20260907));
+        expect(formatGodInfo(legacyWorld)).toBe("天道未啟用");
     });
 });

@@ -38,7 +38,15 @@ const founderGenomes = {
     carnivore: sacredSeedToBrain(godMemory.sacredSeeds.carnivore),
 };
 
-let world = new World({ ...makeSeeding(), founderGenomes });
+let world = new World({
+    ...makeSeeding(),
+    founderGenomes,
+    enableGodAgent: true,
+    godMemory,
+    socialMode: "pack",
+    socialCohesion: 0.8,
+    juvenileDuration: 200,
+});
 let ctx: RenderContext = createRenderContext(
     container,
     world.config.width,
@@ -148,6 +156,11 @@ function restart(): void {
     world = new World({
         ...makeSeeding(undefined, selectedEra, selectedReproduction),
         founderGenomes,
+        enableGodAgent: true,
+        godMemory,
+        socialMode: "pack",
+        socialCohesion: 0.8,
+        juvenileDuration: 200,
     });
     ctx.atmosphere.setColors(eraAtmosphereColors(world.config.era));
 

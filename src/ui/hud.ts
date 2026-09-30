@@ -291,6 +291,10 @@ export function createHud(container: HTMLElement): Hud {
         </div>
 
         <div class="hud-stat" id="hud-kin">—</div>
+        <div class="hud-stat" id="hud-god" style="display:flex; justify-content:space-between; align-items:center; gap:4px;">
+            <span id="god-info" title="點擊切換群居/孤狼模式" style="cursor:pointer;">天道 · 守護者</span>
+            <button type="button" id="god-export-btn" title="匯出老天爺大腦與神聖種子記憶" style="background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.25); color:#fff; font-size:10px; padding:2px 6px; border-radius:3px; cursor:pointer;">匯出記憶</button>
+        </div>
 
         <div class="hud-chart">
             <div class="hud-chart-tabs">
@@ -359,6 +363,8 @@ export function createHud(container: HTMLElement): Hud {
     const metaHerbEl = queryHud("#meta-herb");
     const metaCarnEl = queryHud("#meta-carn");
     const kinEl = queryHud("#hud-kin");
+    const godInfoEl = queryHud("#god-info");
+    const godExportBtn = queryHud<HTMLButtonElement>("#god-export-btn");
     const tabPopEl = queryHud<HTMLElement>("#tab-pop");
     const tabLineageEl = queryHud<HTMLElement>("#tab-lineage");
     const legendPopEl = queryHud<HTMLElement>("#legend-pop");
@@ -378,6 +384,28 @@ export function createHud(container: HTMLElement): Hud {
     const lineSeasonEl = queryHud("#line-season");
     const overTitleEl = queryOver("#over-title");
     const overSubEl = queryOver("#over-sub");
+
+    let activeWorld: World | null = null;
+
+    godInfoEl.addEventListener("click", () => {
+        if (!activeWorld) return;
+        const currentMode = activeWorld.config.socialMode ?? "solitary";
+        const nextMode = currentMode === "pack" ? "solitary" : "pack";
+        activeWorld.setSocialMode(nextMode);
+    });
+
+    godExportBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        if (!activeWorld?.godAgent) return;
+        const mem = activeWorld.godAgent.exportMemory();
+        const blob = new Blob([JSON.stringify(mem, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `god-memory-${Date.now()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    });
 
     // Two views rather than more lines on one chart: ancestry depth is a
     // different scale from population, and six series in a 180-pixel box would
@@ -423,6 +451,8 @@ export function createHud(container: HTMLElement): Hud {
                 kin: legKinEl,
                 near: legNearEl,
             });
+            activeWorld = world;
+            godInfoEl.textContent = formatGodInfo(world);
             updateStateBanner(world, paused, stateEl, overEl, overTitleEl, overSubEl);
 
             const seasonLen = world.config.plantSeasonLength ?? 0;
@@ -438,4 +468,15 @@ export function createHud(container: HTMLElement): Hud {
             });
         },
     };
+}
+
+export function formatGodInfo(world: World): string {
+    if (world.godAgent) {
+        const modeLabel = world.config.socialMode === "pack" ? "群居" : "孤狼";
+        const cohesionPct = (
+            (world.config.socialCohesion ?? (world.config.socialMode === "pack" ? 1 : 0)) * 100
+        ).toFixed(0);
+        return `天道神蹟: ${world.godAgent.history.length} · ${modeLabel} (${cohesionPct}%)`;
+    }
+    return "天道未啟用";
 }
