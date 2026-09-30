@@ -8,6 +8,7 @@ import { createMemory, type Memory } from "./memory";
 import { createMealLog } from "./meals";
 import { createLineage } from "./lineage";
 import { LifeGrid } from "./learning";
+import { SocialSignalGrid } from "./social";
 import { overlaySpecies, overlayPlants } from "./era";
 
 export const DEFAULT_BRAIN_SPEC: BrainSpec = {
@@ -245,6 +246,8 @@ export interface WorldConfig {
     cannibalismThreshold?: number;
     /** How many ticks an offspring remains in the juvenile follower stage (default 0, off). */
     juvenileDuration?: number;
+    /** Social mode: 'solitary' (default, independent) or 'pack' (alarm calls & hunt scent tracking). */
+    socialMode?: "solitary" | "pack";
     /** Pre-evolved sacred founder brains from god memory (fallback to random if unset). */
     founderGenomes?: {
         herbivore?: import("./brain").Brain;
@@ -323,6 +326,7 @@ export class World {
     private readonly plantGrid = new SpatialGrid<Plant>(10, (plant) => plant);
     private readonly carrionGrid = new SpatialGrid<Carrion>(10, (carrion) => carrion);
     readonly lifeGrid: LifeGrid;
+    readonly socialGrid: SocialSignalGrid;
     /** Era-resolved plant numbers in force this run (see `PlantParams`). */
     readonly plantParams: PlantParams;
     private nextId = 1;
@@ -354,6 +358,7 @@ export class World {
             config.height,
             config.lifeGridCellsize ?? 6,
         );
+        this.socialGrid = new SocialSignalGrid(config.width, config.height);
         // Era-resolved species/plant params: an era can override any species
         // tuning knob or plant throughput. Absent era == base SPECIES params
         // passed through by reference (so mutable-Global tests still work).
@@ -611,6 +616,7 @@ export class World {
         this.checkExtinction();
         this.sweepTheDead();
         this.decayCarrion();
+        this.socialGrid.decay(0.05);
 
         // Turn snapshot.
         if (this.tick % this.config.turnLength === 0) {
@@ -716,8 +722,8 @@ export class World {
         let steer = out[0];
         let thrust = (out[1] + 1) / 2;
 
-        // Juveniles imprint on and follow their mother
-        const steered = this.applyJuvenileSteering(e, steer, thrust);
+        // Juveniles imprint on mother; packs share alarms and scent trails
+        const steered = this.applySocialSteering(e, s, sense, steer, thrust);
         steer = steered.steer;
         thrust = steered.thrust;
 
@@ -759,6 +765,46 @@ export class World {
         while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
         while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
         return { steer: steer * 0.3 + Math.sign(angleDiff) * 0.7, thrust: Math.max(thrust, 0.75) };
+    }
+
+    private applySocialSteering(
+        e: Entity,
+        s: SpeciesParams,
+        sense: SenseResult | null,
+        steer: number,
+        thrust: number,
+    ): { steer: number; thrust: number } {
+        if (e.isJuvenile && e.motherId !== null) {
+            return this.applyJuvenileSteering(e, steer, thrust);
+        }
+        if (this.config.socialMode !== "pack") return { steer, thrust };
+
+        if (s.kind === "herbivore") {
+            const threat = this.nearestThreat(e);
+            if (threat && Math.sqrt(threat.d2) < s.senseRange * 0.5) {
+                this.socialGrid.emitAlarm(e.pos.x, e.pos.y, 1.0);
+            }
+            const alarm = this.socialGrid.queryAlarm(e.pos.x, e.pos.y);
+            if (alarm && (!threat || Math.sqrt(threat.d2) > 8)) {
+                const fleeAngle = Math.atan2(-alarm.dy, -alarm.dx);
+                let angleDiff = fleeAngle - e.angle;
+                while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                return { steer: steer * 0.4 + Math.sign(angleDiff) * 0.6, thrust: Math.max(thrust, 0.8) };
+            }
+        } else if (s.kind === "carnivore") {
+            if (!sense || sense.dist > 15) {
+                const scent = this.socialGrid.queryScent(e.pos.x, e.pos.y);
+                if (scent) {
+                    const huntAngle = Math.atan2(scent.dy, scent.dx);
+                    let angleDiff = huntAngle - e.angle;
+                    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                    return { steer: steer * 0.5 + Math.sign(angleDiff) * 0.5, thrust: Math.max(thrust, 0.7) };
+                }
+            }
+        }
+        return { steer, thrust };
     }
 
     // ---------------------------------------------------------------------
@@ -1007,6 +1053,9 @@ export class World {
         if (this.rng() < CATCH_CHANCE * factor) {
             const meat = found.item.energy;
             this.kill(found.item, "preyed");
+            if (this.config.socialMode === "pack") {
+                this.socialGrid.depositScent(found.item.pos.x, found.item.pos.y, 2.0);
+            }
             const gained = Math.min(meat * 0.6, species.maxEnergy * 0.5) + species.foodEnergy;
             entity.energy += gained;
             entity.fitness += gained;
