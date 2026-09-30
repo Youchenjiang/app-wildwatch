@@ -243,6 +243,8 @@ export interface WorldConfig {
      * predators are crowded and herbivores are scarce.
      */
     cannibalismThreshold?: number;
+    /** How many ticks an offspring remains in the juvenile follower stage (default 200). */
+    juvenileDuration?: number;
     /** Pre-evolved sacred founder brains from god memory (fallback to random if unset). */
     founderGenomes?: {
         herbivore?: import("./brain").Brain;
@@ -515,6 +517,8 @@ export class World {
         entity.generation = generation;
         if (secondParent && parent) {
             entity.parentIds = [parent.id, secondParent.id];
+            entity.motherId = parent.id;
+            entity.juvenileDuration = this.config.juvenileDuration ?? 200;
         } else if (parent) {
             // An asexual clone has one parent, recorded twice. Slot 1 used to
             // hold the grandparent instead, which made it mean a second parent
@@ -522,6 +526,8 @@ export class World {
             // could tell how far up an ancestor actually sat. Ancestry is a
             // walk now (src/sim/lineage.ts), so the slot can just say "parent".
             entity.parentIds = [parent.id, parent.id];
+            entity.motherId = parent.id;
+            entity.juvenileDuration = this.config.juvenileDuration ?? 200;
         }
         // Record the link before the entity can ever die: the population keeps
         // only the living, so a chain must survive its own ancestors.
@@ -687,6 +693,16 @@ export class World {
         return kept;
     }
 
+    /** Finds a living entity by its unique ID. */
+    getEntityById(id: number): Entity | undefined {
+        for (let i = 0; i < this.entities.length; i++) {
+            if (this.entities[i].id === id && this.entities[i].alive) {
+                return this.entities[i];
+            }
+        }
+        return undefined;
+    }
+
     private updateEntity(e: Entity): void {
         const s = e.species;
         e.age++;
@@ -697,8 +713,26 @@ export class World {
 
         // Bias behavior with episodic recall before the brain acts.
         const out = this.brainForwardWithRecall(e, inputs);
-        const steer = out[0];
-        const thrust = (out[1] + 1) / 2;
+        let steer = out[0];
+        let thrust = (out[1] + 1) / 2;
+
+        // Juveniles imprint on and follow their mother
+        if (e.isJuvenile && e.motherId !== null) {
+            const mother = this.getEntityById(e.motherId);
+            if (mother) {
+                const dx = mother.pos.x - e.pos.x;
+                const dy = mother.pos.y - e.pos.y;
+                const distToMother = Math.hypot(dx, dy);
+                if (distToMother > 2.5) {
+                    const targetAngle = Math.atan2(dy, dx);
+                    let angleDiff = targetAngle - e.angle;
+                    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+                    steer = steer * 0.3 + Math.sign(angleDiff) * 0.7;
+                    thrust = Math.max(thrust, 0.75);
+                }
+            }
+        }
 
         const steerMag = Math.abs(steer);
         e.angle += steer * s.maxTurn;

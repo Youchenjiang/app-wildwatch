@@ -20,6 +20,16 @@ export class Entity {
      * clone. Null for a founder. See src/sim/lineage.ts for walking a chain. */
     parentIds: readonly [number, number] | null = null;
 
+    /** Primary mother/parent entity ID for imprinting and imitation. */
+    motherId: number | null = null;
+    /** How many ticks this entity remains a dependent juvenile (0 for founders). */
+    juvenileDuration = 0;
+
+    /** Whether this animal is currently in the juvenile learning phase. */
+    get isJuvenile(): boolean {
+        return this.juvenileDuration > 0 && this.age < this.juvenileDuration;
+    }
+
     /** Episodic memory: rewarding events bias later behavior within a lifetime. */
     memory: Memory;
 
