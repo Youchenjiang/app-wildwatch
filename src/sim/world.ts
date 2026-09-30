@@ -243,6 +243,11 @@ export interface WorldConfig {
      * predators are crowded and herbivores are scarce.
      */
     cannibalismThreshold?: number;
+    /** Pre-evolved sacred founder brains from god memory (fallback to random if unset). */
+    founderGenomes?: {
+        herbivore?: import("./brain").Brain;
+        carnivore?: import("./brain").Brain;
+    };
 }
 
 interface Sense {
@@ -367,11 +372,13 @@ export class World {
         // Store resolved params so spawnEntity/reproduce can read them back.
         this.herbSpecies = herb;
         this.carnSpecies = carn;
+        const herbFounder = config.founderGenomes?.herbivore;
+        const carnFounder = config.founderGenomes?.carnivore;
         for (let i = 0; i < config.herbivoreCount; i++) {
-            this.spawnEntity(herb, 0, undefined, undefined, undefined, createMemory(memCap));
+            this.spawnEntity(herb, 0, undefined, undefined, undefined, createMemory(memCap), herbFounder);
         }
         for (let i = 0; i < config.carnivoreCount; i++) {
-            this.spawnEntity(carn, 0, undefined, undefined, undefined, createMemory(memCap));
+            this.spawnEntity(carn, 0, undefined, undefined, undefined, createMemory(memCap), carnFounder);
         }
         for (let i = 0; i < config.plantCount; i++) {
             this.spawnPlant();
@@ -475,6 +482,7 @@ export class World {
         secondParent?: Entity,
         childEnergy?: number,
         memory?: Memory,
+        initialBrain?: Brain,
     ): Entity {
         const pos = parent
             ? this.clampPos({
@@ -490,7 +498,13 @@ export class World {
                   child.mutate(this.config.mutationRate, this.config.mutationSigma, this.rng);
                   return child;
               })()
-            : Brain.random(this.config.brainSpec, this.rng);
+            : initialBrain
+                ? (() => {
+                      const seedBrain = initialBrain.clone();
+                      seedBrain.mutate(this.config.mutationRate, this.config.mutationSigma, this.rng);
+                      return seedBrain;
+                  })()
+                : Brain.random(this.config.brainSpec, this.rng);
         const entity = new Entity(
             species,
             pos,
