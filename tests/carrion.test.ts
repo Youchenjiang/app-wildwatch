@@ -64,6 +64,8 @@ describe("carrion cycle", () => {
             alive: true,
             fromId: 0,
             fromGeneration: 1,
+            deathTick: 0,
+            deathReason: "test",
         });
         world.tickStep();
         expect(carn.energy).toBeGreaterThan(before);

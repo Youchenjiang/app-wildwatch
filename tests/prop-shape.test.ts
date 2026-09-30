@@ -175,6 +175,8 @@ describe("props as drawn", () => {
             alive: true,
             fromId: 0,
             fromGeneration: 1,
+            deathTick: 0,
+            deathReason: "test",
         });
         pool.sync(world);
 

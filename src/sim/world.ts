@@ -90,6 +90,10 @@ export interface Carrion {
     /** That animal's generation, so a scavenged meal can report how deep into
      * the lineage the body sat — the same figure a hunted kill reports. */
     fromGeneration: number;
+    /** The tick on which this animal died. */
+    deathTick: number;
+    /** Why it died: "starvation", "old age", or "preyed". */
+    deathReason: string;
 }
 
 /**
@@ -1087,7 +1091,7 @@ export class World {
         return best;
     }
 
-    private kill(e: Entity, _reason: string): void {
+    private kill(e: Entity, reason: string): void {
         if (!e.alive) return;
         e.alive = false;
         this.deaths[e.species.kind]++;
@@ -1101,6 +1105,8 @@ export class World {
                 alive: true,
                 fromId: e.id,
                 fromGeneration: e.generation,
+                deathTick: this.tick,
+                deathReason: reason,
             });
         }
     }

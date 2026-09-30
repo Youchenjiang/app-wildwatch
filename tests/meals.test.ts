@@ -112,6 +112,8 @@ describe("meal recording", () => {
             alive: true,
             fromId: 777,
             fromGeneration: 12,
+            deathTick: 0,
+            deathReason: "test",
         };
         world.carrions.push(corpse);
 
