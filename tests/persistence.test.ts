@@ -31,7 +31,7 @@ describe("Persistence & God Memory Loader", () => {
         const mockData = rawGodMemory as unknown as GodMemory;
         const fetchMock = vi.fn().mockResolvedValue({
             ok: true,
-            json: async () => mockData,
+            json: () => Promise.resolve(mockData),
         });
         vi.stubGlobal("fetch", fetchMock);
 

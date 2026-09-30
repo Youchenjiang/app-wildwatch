@@ -1,5 +1,6 @@
 import { Brain } from "./brain";
 import { DEFAULT_BRAIN_SPEC } from "./world";
+import { gaussian, mulberry32 } from "./rng";
 import type { GodMemory, SacredSeed } from "./types";
 
 /** Convert a serialized SacredSeed into a live, runnable Brain instance. */
@@ -17,21 +18,23 @@ export function sacredSeedToBrain(seed: SacredSeed): Brain {
 export function createDefaultGodMemory(): GodMemory {
     const scale = 1 / Math.sqrt(DEFAULT_BRAIN_SPEC.inputSize);
     const makeWeights = (seedVal: number) => {
-        let s = seedVal;
-        const rng = () => {
-            s = (s * 1664525 + 1013904223) % 4294967296;
-            return s / 4294967296;
-        };
-        const gaussian = () => {
-            let u = 0, v = 0;
-            while (u === 0) u = rng();
-            while (v === 0) v = rng();
-            return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
-        };
-        const w1 = Array.from({ length: DEFAULT_BRAIN_SPEC.inputSize * DEFAULT_BRAIN_SPEC.hiddenSize }, () => +(gaussian() * scale).toFixed(5));
-        const b1 = Array.from({ length: DEFAULT_BRAIN_SPEC.hiddenSize }, () => +(gaussian() * scale * 0.1).toFixed(5));
-        const w2 = Array.from({ length: DEFAULT_BRAIN_SPEC.hiddenSize * DEFAULT_BRAIN_SPEC.outputSize }, () => +(gaussian() * scale).toFixed(5));
-        const b2 = Array.from({ length: DEFAULT_BRAIN_SPEC.outputSize }, () => +(gaussian() * scale * 0.1).toFixed(5));
+        const rng = mulberry32(seedVal);
+        const w1 = Array.from(
+            { length: DEFAULT_BRAIN_SPEC.inputSize * DEFAULT_BRAIN_SPEC.hiddenSize },
+            () => Number((gaussian(rng) * scale).toFixed(5)),
+        );
+        const b1 = Array.from(
+            { length: DEFAULT_BRAIN_SPEC.hiddenSize },
+            () => Number((gaussian(rng) * scale * 0.1).toFixed(5)),
+        );
+        const w2 = Array.from(
+            { length: DEFAULT_BRAIN_SPEC.hiddenSize * DEFAULT_BRAIN_SPEC.outputSize },
+            () => Number((gaussian(rng) * scale).toFixed(5)),
+        );
+        const b2 = Array.from(
+            { length: DEFAULT_BRAIN_SPEC.outputSize },
+            () => Number((gaussian(rng) * scale * 0.1).toFixed(5)),
+        );
         return { w1, b1, w2, b2 };
     };
 
