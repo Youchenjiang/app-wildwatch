@@ -3,6 +3,26 @@ import { World, type WorldConfig } from "../src/sim/world";
 import { makeSeeding } from "../src/sim/seeding";
 import type { Entity } from "../src/sim/entity";
 
+interface WorldSenseAccessor {
+    syncIndexes: () => void;
+    sense: (entity: Entity) => { dx: number; dy: number; dist: number } | null;
+}
+
+function asSenseAccessor(world: World): WorldSenseAccessor {
+    return world as unknown as WorldSenseAccessor;
+}
+
+function requireCarnivorePair(world: World): [Entity, Entity] {
+    const carnivores = world.entities.filter((entity) => entity.alive && entity.species.kind === "carnivore");
+    expect(carnivores.length).toBeGreaterThanOrEqual(2);
+    const firstCarnivore = carnivores[0];
+    const secondCarnivore = carnivores[1];
+    if (!firstCarnivore || !secondCarnivore) {
+        throw new Error("Expected at least two live carnivores");
+    }
+    return [firstCarnivore, secondCarnivore];
+}
+
 /** Create a minimal config with cannibalism enabled. */
 function cannibalConfig(
     overrides: Partial<WorldConfig> & { seed: number } = { seed: 42 },
@@ -36,17 +56,19 @@ describe("cannibalism", () => {
         };
         const world = new World(config);
         // Place both carnivores on the same spot so they are within eatRadius.
-        const a = world.entities[0]!;
-        const b = world.entities[1]!;
-        a.pos.x = b.pos.x = 15;
-        a.pos.y = b.pos.y = 15;
+        const [firstHunter, secondHunter] = requireCarnivorePair(world);
+        firstHunter.pos.x = secondHunter.pos.x = 15;
+        firstHunter.pos.y = secondHunter.pos.y = 15;
         // Starve one well below any reasonable threshold.
-        a.energy = 1;
-        b.energy = 50;
+        firstHunter.energy = 1;
+        secondHunter.energy = 50;
         const before = world.entities.length;
         world.tickStep();
         // Neither should have been eaten — cannibalism is off.
-        expect(world.entities.filter((e) => e.alive && e.species.kind === "carnivore").length).toBe(before);
+        const remainingCarnivores = world.entities.filter(
+            (entity) => entity.alive && entity.species.kind === "carnivore",
+        );
+        expect(remainingCarnivores).toHaveLength(before);
     });
 
     it("starving carnivore senses same-species as prey when threshold > 0", () => {
@@ -54,18 +76,16 @@ describe("cannibalism", () => {
         const world = new World(config);
         // Run one tick so the spatial grid is populated.
         world.tickStep();
-        const a = world.entities.find((e) => e.alive && e.species.kind === "carnivore")!;
-        const b = world.entities.find((e) => e.alive && e.species.kind === "carnivore" && e !== a)!;
+        const [firstHunter, secondHunter] = requireCarnivorePair(world);
         // Place both on the same spot.
-        a.pos.x = b.pos.x = 15;
-        a.pos.y = b.pos.y = 15;
-        a.energy = 1; // well below 0.15 * 100 = 15
-        b.energy = 80;
+        firstHunter.pos.x = secondHunter.pos.x = 15;
+        firstHunter.pos.y = secondHunter.pos.y = 15;
+        firstHunter.energy = 1; // well below 0.15 * 100 = 15
+        secondHunter.energy = 80;
         // Sync the grid so sense() can find entities at their new positions.
-        (world as any).grid.clear();
-        for (const e of world.entities) { if (e.alive) (world as any).grid.insert(e); }
-        const sense = (world as any).sense.bind(world) as (e: Entity) => { dx: number; dy: number; dist: number } | null;
-        const result = sense(a);
+        const internalWorld = asSenseAccessor(world);
+        internalWorld.syncIndexes();
+        const result = internalWorld.sense(firstHunter);
         expect(result).not.toBeNull();
     });
 
@@ -73,17 +93,15 @@ describe("cannibalism", () => {
         const config = cannibalConfig({ seed: 7, carnivoreCount: 2 });
         const world = new World(config);
         world.tickStep();
-        const a = world.entities.find((e) => e.alive && e.species.kind === "carnivore")!;
-        const b = world.entities.find((e) => e.alive && e.species.kind === "carnivore" && e !== a)!;
-        a.pos.x = b.pos.x = 15;
-        a.pos.y = b.pos.y = 15;
-        a.energy = 80; // well above 0.15 * 100 = 15
-        b.energy = 50;
-        (world as any).grid.clear();
-        for (const e of world.entities) { if (e.alive) (world as any).grid.insert(e); }
-        const sense = (world as any).sense.bind(world) as (e: Entity) => { dx: number; dy: number; dist: number } | null;
-        // No herbivores in the world, and a is not starving → nothing to sense.
-        expect(sense(a)).toBeNull();
+        const [firstHunter, secondHunter] = requireCarnivorePair(world);
+        firstHunter.pos.x = secondHunter.pos.x = 15;
+        firstHunter.pos.y = secondHunter.pos.y = 15;
+        firstHunter.energy = 80; // well above 0.15 * 100 = 15
+        secondHunter.energy = 50;
+        const internalWorld = asSenseAccessor(world);
+        internalWorld.syncIndexes();
+        // No herbivores in the world, and firstHunter is not starving → nothing to sense.
+        expect(internalWorld.sense(firstHunter)).toBeNull();
     });
 
     it("starving carnivore eats a same-species neighbour within eatRadius", () => {
@@ -101,19 +119,27 @@ describe("cannibalism", () => {
             cannibalismThreshold: 0.15,
         };
         const world = new World(config);
-        const prey = world.entities[0]!;
+        const prey = world.entities[0];
+        expect(prey).toBeDefined();
+        if (!prey) {
+            throw new Error("Expected prey entity");
+        }
         // Starve the prey so other carnivores will target it.
         prey.energy = 1;
         // Place all 4 on the same spot to guarantee overlap.
-        for (const e of world.entities) {
-            e.pos.x = 5;
-            e.pos.y = 5;
+        for (const entity of world.entities) {
+            entity.pos.x = 5;
+            entity.pos.y = 5;
         }
-        const aliveBefore = world.entities.filter((e) => e.alive).length;
+        const aliveBefore = world.entities.filter((entity) => entity.alive).length;
         // Run several ticks — with 4 carnivores in a 10×10 world the density
         // is high enough that at least one cannibalistic catch should land.
-        for (let i = 0; i < 20; i++) world.tickStep();
-        const aliveAfter = world.entities.filter((e) => e.alive && e.species.kind === "carnivore").length;
+        for (let tickIndex = 0; tickIndex < 20; tickIndex++) {
+            world.tickStep();
+        }
+        const aliveAfter = world.entities.filter(
+            (entity) => entity.alive && entity.species.kind === "carnivore",
+        ).length;
         expect(aliveAfter).toBeLessThan(aliveBefore);
     });
 
@@ -121,20 +147,18 @@ describe("cannibalism", () => {
         const config = cannibalConfig({ seed: 11, carnivoreCount: 2 });
         const world = new World(config);
         world.tickStep();
-        const a = world.entities.find((e) => e.alive && e.species.kind === "carnivore")!;
-        const b = world.entities.find((e) => e.alive && e.species.kind === "carnivore" && e !== a)!;
-        a.pos.x = b.pos.x = 15;
-        a.pos.y = b.pos.y = 15;
-        a.energy = 16; // just above 0.15 * 100 = 15 → NOT starving
-        b.energy = 50;
-        (world as any).grid.clear();
-        for (const e of world.entities) { if (e.alive) (world as any).grid.insert(e); }
-        const sense = (world as any).sense.bind(world) as (e: Entity) => { dx: number; dy: number; dist: number } | null;
+        const [firstHunter, secondHunter] = requireCarnivorePair(world);
+        firstHunter.pos.x = secondHunter.pos.x = 15;
+        firstHunter.pos.y = secondHunter.pos.y = 15;
+        firstHunter.energy = 16; // just above 0.15 * 100 = 15 → NOT starving
+        secondHunter.energy = 50;
+        const internalWorld = asSenseAccessor(world);
+        internalWorld.syncIndexes();
         // At 16 > 15, cannibalism should NOT activate.
-        expect(sense(a)).toBeNull();
+        expect(internalWorld.sense(firstHunter)).toBeNull();
         // Drop to 14 < 15 → cannibalism activates.
-        a.energy = 14;
-        expect(sense(a)).not.toBeNull();
+        firstHunter.energy = 14;
+        expect(internalWorld.sense(firstHunter)).not.toBeNull();
     });
 
     it("does not read a below-zero energy dip as starvation while it is off", () => {
@@ -145,16 +169,14 @@ describe("cannibalism", () => {
         const config = cannibalConfig({ seed: 7, carnivoreCount: 2, cannibalismThreshold: 0 });
         const world = new World(config);
         world.tickStep();
-        const a = world.entities.find((e) => e.alive && e.species.kind === "carnivore")!;
-        const b = world.entities.find((e) => e.alive && e.species.kind === "carnivore" && e !== a)!;
-        a.pos.x = b.pos.x = 15;
-        a.pos.y = b.pos.y = 15;
-        a.energy = -0.1; // the dip, not a starvation state
-        b.energy = 50;
-        (world as any).grid.clear();
-        for (const e of world.entities) { if (e.alive) (world as any).grid.insert(e); }
-        const sense = (world as any).sense.bind(world) as (e: Entity) => { dx: number; dy: number; dist: number } | null;
-        expect(sense(a)).toBeNull();
+        const [firstHunter, secondHunter] = requireCarnivorePair(world);
+        firstHunter.pos.x = secondHunter.pos.x = 15;
+        firstHunter.pos.y = secondHunter.pos.y = 15;
+        firstHunter.energy = -0.1; // the dip, not a starvation state
+        secondHunter.energy = 50;
+        const internalWorld = asSenseAccessor(world);
+        internalWorld.syncIndexes();
+        expect(internalWorld.sense(firstHunter)).toBeNull();
     });
 
     it("files no same-kind hunt across a long run while it is off", () => {
@@ -167,23 +189,23 @@ describe("cannibalism", () => {
         const seenPrey = new Map<Entity, number>();
         let hunts = 0;
         let ownKind = 0;
-        for (let i = 0; i < 4000; i++) {
+        for (let tickIndex = 0; tickIndex < 4000; tickIndex++) {
             world.tickStep();
-            for (const e of world.entities) {
-                kindById.set(e.id, e.species.kind);
-                const prey = e.meals.counts().prey;
-                const before = seenPrey.get(e) ?? 0;
-                if (prey > before) {
-                    hunts += prey - before;
-                    const newest = e.meals.recent(1)[0];
+            for (const entity of world.entities) {
+                kindById.set(entity.id, entity.species.kind);
+                const preyCount = entity.meals.counts().prey;
+                const beforeCount = seenPrey.get(entity) ?? 0;
+                if (preyCount > beforeCount) {
+                    hunts += preyCount - beforeCount;
+                    const newest = entity.meals.recent(1)[0];
                     if (
                         newest?.source === "prey" &&
                         newest.victimId !== undefined &&
-                        kindById.get(newest.victimId) === e.species.kind
+                        kindById.get(newest.victimId) === entity.species.kind
                     ) {
                         ownKind++;
                     }
-                    seenPrey.set(e, prey);
+                    seenPrey.set(entity, preyCount);
                 }
             }
         }

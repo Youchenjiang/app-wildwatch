@@ -840,44 +840,49 @@ export class MeshPool {
             (shadow.material as THREE.MeshBasicMaterial).opacity =
                 (0.22 + 0.14 * Math.min(1, e.energy / e.species.maxEnergy)) * (1 - 0.3 * airborne);
 
-            // Cannibalism indicator: a small pulsing red ring above a
-            // starving carnivore's head, visible at god-camera distance.
-            if (
-                this.cannibalThreshold > 0 &&
-                e.species.kind === "carnivore" &&
-                e.energy < this.cannibalThreshold * e.species.maxEnergy
-            ) {
-                let indicator = this.cannibalIndicators.get(e.id);
-                if (!indicator) {
-                    indicator = new THREE.Mesh(
-                        new THREE.RingGeometry(0.55, 0.75, 20),
-                        new THREE.MeshBasicMaterial({
-                            color: 0xff3333,
-                            transparent: true,
-                            opacity: 0.7,
-                            side: THREE.DoubleSide,
-                            depthWrite: false,
-                        }),
-                    );
-                    indicator.rotation.x = -Math.PI / 2;
-                    this.scene.add(indicator);
-                    this.cannibalIndicators.set(e.id, indicator);
-                }
-                indicator.visible = true;
-                indicator.position.set(e.pos.x, mesh.position.y + 0.9, e.pos.y);
-                // Pulse: fast oscillation keyed to animTime and animal id.
-                const pulse = 0.35 + 0.35 * Math.sin(this.animTime * 6 + e.id * 2.3);
-                (indicator.material as THREE.MeshBasicMaterial).opacity = pulse;
-            } else {
-                const indicator = this.cannibalIndicators.get(e.id);
-                if (indicator) indicator.visible = false;
-            }
+            this.updateCannibalIndicator(e, mesh);
         }
         this.pruneNpcs(seenNpc, true);
         this.reap(this.npcShadows, seenNpc);
         this.reap(this.cannibalIndicators, seenNpc);
         this.updateRing();
     }
+    private updateCannibalIndicator(entity: Entity, entityMesh: THREE.Mesh): void {
+        const isStarvingCarnivore =
+            this.cannibalThreshold > 0 &&
+            entity.species.kind === "carnivore" &&
+            entity.energy < this.cannibalThreshold * entity.species.maxEnergy;
+
+        if (!isStarvingCarnivore) {
+            const indicator = this.cannibalIndicators.get(entity.id);
+            if (indicator) {
+                indicator.visible = false;
+            }
+            return;
+        }
+
+        let indicator = this.cannibalIndicators.get(entity.id);
+        if (!indicator) {
+            indicator = new THREE.Mesh(
+                new THREE.RingGeometry(0.55, 0.75, 20),
+                new THREE.MeshBasicMaterial({
+                    color: 0xff3333,
+                    transparent: true,
+                    opacity: 0.7,
+                    side: THREE.DoubleSide,
+                    depthWrite: false,
+                }),
+            );
+            indicator.rotation.x = -Math.PI / 2;
+            this.scene.add(indicator);
+            this.cannibalIndicators.set(entity.id, indicator);
+        }
+        indicator.visible = true;
+        indicator.position.set(entity.pos.x, entityMesh.position.y + 0.9, entity.pos.y);
+        const pulse = 0.35 + 0.35 * Math.sin(this.animTime * 6 + entity.id * 2.3);
+        (indicator.material as THREE.MeshBasicMaterial).opacity = pulse;
+    }
+
     private syncNpcsFrame(
         npcs: Array<{ id: number; kind: number; x: number; y: number; angle: number; energy01: number }>,
     ): void {

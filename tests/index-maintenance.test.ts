@@ -28,7 +28,7 @@ function probes(where: readonly Pointed[]): Pointed[] {
         { x: 119.5, y: 0.5 },
         { x: 60, y: 60 },
     ];
-    for (const p of where) points.push({ x: p.x, y: p.y });
+    for (const point of where) points.push({ x: point.x, y: point.y });
     return points;
 }
 
@@ -43,16 +43,16 @@ function expectMatchesRebuild<T extends { id: number }>(
 ): void {
     const fresh = new SpatialGrid<T>(10, position);
     for (const item of items) fresh.insert(item);
-    for (const p of probes(items.map(position))) {
-        for (const r of RADII) {
+    for (const probePoint of probes(items.map(position))) {
+        for (const radius of RADII) {
             const got: T[] = [];
             const want: T[] = [];
-            live.query(p.x, p.y, r, got);
-            fresh.query(p.x, p.y, r, want);
+            live.query(probePoint.x, probePoint.y, radius, got);
+            fresh.query(probePoint.x, probePoint.y, radius, want);
             expect(
-                got.map((i) => i.id),
-                `${where} at (${p.x.toFixed(1)}, ${p.y.toFixed(1)}) r=${r}`,
-            ).toEqual(want.map((i) => i.id));
+                got.map((entry) => entry.id),
+                `${where} at (${probePoint.x.toFixed(1)}, ${probePoint.y.toFixed(1)}) r=${radius}`,
+            ).toEqual(want.map((entry) => entry.id));
         }
     }
 }
@@ -67,7 +67,7 @@ describe("in-place index maintenance", () => {
             // see the world as it was when the tick began), so comparing after
             // a tick would be comparing against the wrong thing.
             const world = new World(makeSeeding(20260907));
-            for (let i = 0; i < 700; i++) world.tickStep();
+            for (let tick = 0; tick < 700; tick++) world.tickStep();
 
             const grid = indexes(world);
             const sync = world["syncIndexes"].bind(world);
@@ -78,14 +78,14 @@ describe("in-place index maintenance", () => {
                 syncs++;
                 expectMatchesRebuild(
                     grid.entity,
-                    world.entities.filter((e) => e.alive),
-                    (e) => e.pos,
+                    world.entities.filter((entity) => entity.alive),
+                    (entity) => entity.pos,
                     "entities",
                 );
-                expectMatchesRebuild(grid.plant, world.plants, (p) => p, "plants");
-                expectMatchesRebuild(grid.carrion, world.carrions, (c) => c, "carrions");
+                expectMatchesRebuild(grid.plant, world.plants, (plant) => plant, "plants");
+                expectMatchesRebuild(grid.carrion, world.carrions, (corpse) => corpse, "carrions");
             };
-            for (let i = 0; i < 400; i++) world.tickStep();
+            for (let tick = 0; tick < 400; tick++) world.tickStep();
             expect(syncs).toBe(400);
         },
         120000,
@@ -100,18 +100,18 @@ describe("in-place index maintenance", () => {
             // the next tick's sync, which is where the rebuild used to run.
             const world = new World(makeSeeding(20260907));
             const grid = indexes(world);
-            for (let i = 0; i < 3000; i++) {
+            for (let tick = 0; tick < 3000; tick++) {
                 const entitiesBefore = new Set(world.entities);
                 const carrionsBefore = new Set(world.carrions);
                 world.tickStep();
-                if (i % 500 !== 0) continue;
+                if (tick % 500 !== 0) continue;
 
                 const bornAlive = world.entities.filter(
-                    (e) => !entitiesBefore.has(e) && e.alive,
+                    (entity) => !entitiesBefore.has(entity) && entity.alive,
                 ).length;
-                const newCarrions = world.carrions.filter((c) => !carrionsBefore.has(c)).length;
+                const newCarrions = world.carrions.filter((corpse) => !carrionsBefore.has(corpse)).length;
                 expect(grid.entity.size).toBe(
-                    world.entities.filter((e) => e.alive).length - bornAlive,
+                    world.entities.filter((entity) => entity.alive).length - bornAlive,
                 );
                 // Plants have no deferral: they are filed as they regrow, since
                 // the rebuild also ran after regrowth.
@@ -132,10 +132,10 @@ describe("in-place index maintenance", () => {
             const world = new World(makeSeeding(20260907));
             const grid = indexes(world);
             let born: Entity[] = [];
-            for (let i = 0; i < 300 && born.length === 0; i++) {
+            for (let tick = 0; tick < 300 && born.length === 0; tick++) {
                 const before = new Set(world.entities);
                 world.tickStep();
-                born = world.entities.filter((e) => e.alive && !before.has(e));
+                born = world.entities.filter((entity) => entity.alive && !before.has(entity));
             }
             expect(born.length, "no birth in 300 ticks of grassland").toBeGreaterThan(0);
             for (const baby of born) {

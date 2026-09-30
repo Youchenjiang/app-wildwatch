@@ -544,8 +544,8 @@ export class World {
 
     /** Sweep the dead, unhooking each from its index as it leaves. */
     private sweepTheDead(): void {
-        this.entities = this.sweep(this.entities, this.grid);
-        this.plants = this.sweep(this.plants, this.plantGrid);
+        this.entities = World.sweep(this.entities, this.grid);
+        this.plants = World.sweep(this.plants, this.plantGrid);
     }
 
     /** Carrion decays naturally; fully decayed corpses vanish (rule 6). */
@@ -555,7 +555,7 @@ export class World {
             if (corpse.alive) corpse.energy -= decay;
             if (corpse.energy <= 0) corpse.alive = false;
         }
-        this.carrions = this.sweep(this.carrions, this.carrionGrid);
+        this.carrions = World.sweep(this.carrions, this.carrionGrid);
     }
 
     /** Light population-level life-grid bookkeeping. */
@@ -597,7 +597,7 @@ export class World {
     }
 
     /** Drop the dead from a list, and from the index that held them. */
-    private sweep<T extends { alive: boolean }>(items: T[], index: SpatialGrid<T>): T[] {
+    private static sweep<T extends { alive: boolean }>(items: T[], index: SpatialGrid<T>): T[] {
         const kept: T[] = [];
         for (const item of items) {
             if (item.alive) kept.push(item);
