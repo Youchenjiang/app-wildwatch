@@ -25,13 +25,56 @@ export const DEFAULT_BRAIN_SPEC: BrainSpec = {
  * the index's point of view while still standing in the world, and grazing
  * would quietly stop finding it. The type is what stops that silently
  * happening rather than a comment asking nicely.
+ *
+ * `energy` and `bites` do change under a plant's feet as it is grazed, which is
+ * fine for the same reason: the index files a plant by where it stands, not by
+ * how much of it is left.
  */
 export interface Plant {
     id: number;
     readonly x: number;
     readonly y: number;
+    /**
+     * Energy still standing in this tuft: one bite takes a share of it and
+     * leaves the rest, so this is a remainder rather than a constant. It is
+     * `bites × biteEnergy` at all times.
+     */
     energy: number;
+    /**
+     * Bites still available. Kept as a count rather than derived from the
+     * energy because it is what decides when the tuft is finished, and a
+     * countdown of floating-point remainders cannot say "empty" exactly
+     * (`plantEnergy / plantBites` need not divide evenly).
+     */
+    bites: number;
     alive: boolean;
+    /** The tick this tuft appeared, so how long it has stood is knowable. */
+    bornTick: number;
+    /** Whether it grew from a neighbouring tuft or arrived as a seed. */
+    route: PlantRoute;
+}
+
+/**
+ * How a tuft arrived. `sprout` grew from a neighbouring tuft — the vegetative
+ * path that makes patches — and `seed` landed wherever it landed: either the
+ * minority that deliberately colonise open ground (`plantColoniseChance`) or
+ * one whose every spot near a parent was already taken (`plantSpacing`).
+ */
+export type PlantRoute = "sprout" | "seed";
+
+/**
+ * Era-resolved plant numbers, plus the bite arithmetic derived from them.
+ * `World.plantParams` is what the sim, the renderer and the inspector all read
+ * rather than each deriving the same division for themselves.
+ */
+export interface PlantParams {
+    regrowPerTick: number;
+    energy: number;
+    maxPlants: number;
+    /** Bites in a full tuft. */
+    bites: number;
+    /** Energy in one bite: `energy / bites`. */
+    biteEnergy: number;
 }
 
 /** A dead animal: returns its unconsumed energy to the environment (rule 6). */
@@ -114,6 +157,16 @@ export interface WorldConfig {
     plantCount: number;
     plantRegrowPerTick: number;
     plantEnergy: number;
+    /**
+     * Bites in a full tuft (default 1 = the whole tuft at once).
+     *
+     * `plantEnergy` is shared evenly among them, so one bite is worth
+     * `plantEnergy / plantBites` and the tuft is finished by the last one. The
+     * food a tuft is worth is therefore unchanged — what changes is that a
+     * grazer can take it in mouthfuls without leaving the patch, which is a
+     * change to how hard the food is to *reach*, not to how much there is.
+     */
+    plantBites?: number;
     maxPlants: number;
     /** Simulation ticks between snapshots. One "turn" = one snapshot. */
     turnLength: number;
@@ -259,6 +312,8 @@ export class World {
     private readonly plantGrid = new SpatialGrid<Plant>(10, (plant) => plant);
     private readonly carrionGrid = new SpatialGrid<Carrion>(10, (carrion) => carrion);
     readonly lifeGrid: LifeGrid;
+    /** Era-resolved plant numbers in force this run (see `PlantParams`). */
+    readonly plantParams: PlantParams;
     private nextId = 1;
     private births: Record<SpeciesKind, number> = EMPTY_COUNTS();
     private deaths: Record<SpeciesKind, number> = EMPTY_COUNTS();
@@ -278,7 +333,6 @@ export class World {
     private gameOverBy: SpeciesKind | null = null;
     readonly herbSpecies: SpeciesParams;
     readonly carnSpecies: SpeciesParams;
-    readonly plantParams: { regrowPerTick: number; energy: number; maxPlants: number };
 
     constructor(config: WorldConfig) {
         this.config = config;
@@ -295,16 +349,20 @@ export class World {
         const era = config.era;
         const herb = era?.herbivore ? overlaySpecies(SPECIES.herbivore, era.herbivore) : SPECIES.herbivore;
         const carn = era?.carnivore ? overlaySpecies(SPECIES.carnivore, era.carnivore) : SPECIES.carnivore;
-        const plant = overlayPlants(
+        const overlay = overlayPlants(
             config.plantRegrowPerTick,
             config.plantEnergy,
             config.maxPlants,
             era?.plants ?? {},
         );
+        // How many mouthfuls a tuft is cut into is a seeding parameter, not an
+        // era overlay: an era changes how much food there is and how fast it
+        // grows, while the size of a mouthful is the same economy everywhere.
+        const bites = Math.max(1, Math.floor(config.plantBites ?? 1));
+        this.plantParams = { ...overlay, bites, biteEnergy: overlay.energy / bites };
         // Store resolved params so spawnEntity/reproduce can read them back.
         this.herbSpecies = herb;
         this.carnSpecies = carn;
-        this.plantParams = plant;
         for (let i = 0; i < config.herbivoreCount; i++) {
             this.spawnEntity(herb, 0, undefined, undefined, undefined, createMemory(memCap));
         }
@@ -339,11 +397,11 @@ export class World {
      * uniform sprinkle the world used to have — kept as a setting so the two
      * can be compared rather than argued about.
      */
-    private plantPosition(): { x: number; y: number } {
+    private plantPosition(): { x: number; y: number; route: PlantRoute } {
         const spread = this.config.plantSpread ?? 0;
         const spacing = this.config.plantSpacing ?? 0;
-        if (spread <= 0 || this.plants.length === 0) return this.randomPos();
-        if (this.rng() < (this.config.plantColoniseChance ?? 0)) return this.randomPos();
+        if (spread <= 0 || this.plants.length === 0) return this.seedPos();
+        if (this.rng() < (this.config.plantColoniseChance ?? 0)) return this.seedPos();
         for (let attempt = 0; attempt < PLANT_SPROUT_ATTEMPTS; attempt++) {
             const parent = pick(this.rng, this.plants);
             const angle = randRange(this.rng, 0, Math.PI * 2);
@@ -352,7 +410,7 @@ export class World {
                 x: parent.x + Math.cos(angle) * reach,
                 y: parent.y + Math.sin(angle) * reach,
             });
-            if (this.plantsNear(spot, spacing) === 0) return spot;
+            if (this.plantsNear(spot, spacing) === 0) return { ...spot, route: "sprout" };
         }
         // Every spot near a parent is taken, so this one travels: a patch that
         // has filled up seeds the ground around it instead of packing itself
@@ -365,7 +423,12 @@ export class World {
         // forager could learn (best-patch persistence 1.44x -> 1.23x) and cost
         // the desert its carnivores, while an unsentimental uniform landing
         // kept patches sharp by occasionally dropping a seed back into one.
-        return this.randomPos();
+        return this.seedPos();
+    }
+
+    /** A spot anywhere in the world: what a seed that travels lands on. */
+    private seedPos(): { x: number; y: number; route: PlantRoute } {
+        return { ...this.randomPos(), route: "seed" };
     }
 
     /** How many living plants stand within `radius` of a spot. */
@@ -381,13 +444,16 @@ export class World {
     }
 
     private spawnPlant(): void {
-        const pos = this.plantPosition();
+        const spot = this.plantPosition();
         const plant: Plant = {
             id: this.nextId++,
-            x: pos.x,
-            y: pos.y,
+            x: spot.x,
+            y: spot.y,
             energy: this.plantParams.energy,
+            bites: this.plantParams.bites,
             alive: true,
+            bornTick: this.tick,
+            route: spot.route,
         };
         this.plants.push(plant);
         // A plant is filed when it appears and never touched again, because it
@@ -818,12 +884,26 @@ export class World {
             entity.pos,
         );
         if (found) {
-            found.item.alive = false;
-            entity.energy += found.item.energy;
-            entity.fitness += found.item.energy;
+            // One mouthful, not the whole tuft: the eater takes a bite's
+            // worth and the rest stays standing for the next bite — this
+            // grazer's or another's. The `bites` countdown is what finishes
+            // the tuft, so it is worth exactly `plantBites` mouthfuls
+            // however `plantEnergy` divides into them.
+            const target = found.item;
+            const bite = Math.min(target.energy, this.plantParams.biteEnergy);
+            target.bites--;
+            target.energy = Math.max(0, target.energy - bite);
+            if (target.bites <= 0) {
+                target.alive = false;
+            }
+            entity.energy += bite;
+            entity.fitness += bite;
             entity.foodEaten++;
-            entity.memory.record(inputs, steer, found.item.energy, entity.age);
-            entity.meals.add({ source: "plant", energy: found.item.energy, age: entity.age });
+            // Remember exactly how we were steering when the bite landed:
+            // this is the action episodic memory will recall to bias later
+            // steering toward food.
+            entity.memory.record(inputs, steer, bite, entity.age);
+            entity.meals.add({ source: "plant", energy: bite, age: entity.age });
         }
     }
 

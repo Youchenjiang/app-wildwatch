@@ -1,7 +1,7 @@
 import type { Entity } from "../sim/entity";
 import { cosineSimilarity } from "../sim/memory";
 import type { Meal, MealSource } from "../sim/meals";
-import type { World } from "../sim/world";
+import type { Plant, World } from "../sim/world";
 
 const MEMORY_ROWS = 8;
 const MEAL_ROWS = 6;
@@ -26,12 +26,16 @@ interface MemoryRow {
 }
 
 /**
- * Selected-entity inspector card. Reads a live entity each frame; during
+ * Selected-subject inspector card. Reads a live entity each frame; during
  * replay it shows the last live snapshot (frozen) and says so. The memory
  * panel lists the entity's most recent episodic traces with their similarity
  * to the current senses, so you can watch lifelong learning as it happens; the
  * meal panel lists what it has actually eaten, so you can see whether that
  * learning is producing a grazer, a hunter or a scavenger.
+ *
+ * A tuft can be selected the same way (the sim gives animals and plants one id
+ * space), and its card answers what a tuft is in this model: how many bites it
+ * has left, what one bite is worth, how long it has stood, and how it got here.
  */
 export interface EntityInspector {
     show(id: number): void;
@@ -51,6 +55,7 @@ export function createInspector(container: HTMLElement): EntityInspector {
     let cached: Entity | null = null;
     let cachedRows: MemoryRow[] = [];
     let cachedMeals: Meal[] = [];
+    let cachedPlant: Plant | null = null;
 
     function memoryRows(e: Entity, world: World): MemoryRow[] {
         const inputs = world.inputsFor(e);
@@ -138,10 +143,36 @@ export function createInspector(container: HTMLElement): EntityInspector {
         card.querySelector("#insp-close")?.addEventListener("click", () => cardOwner().hide());
     }
 
+    /**
+     * The tuft card. `bites` is the sim's own countdown, so "how many bites
+     * left" is read rather than recomputed from a remainder.
+     */
+    function renderPlant(plant: Plant, world: World, frozenNow: boolean): void {
+        const params = world.plantParams;
+        const route = plant.route === "sprout" ? "走莖（長在母株旁）" : "種子（隨機落地）";
+        card.innerHTML = `
+            <div class="insp-head">
+                <span class="dot plant"></span>
+                <span>草叢 #${plant.id}</span>
+                <button id="insp-close" title="關閉">✕</button>
+            </div>
+            <div class="insp-rows">
+                <div><span>剩餘口數</span><b>${plant.bites} / ${params.bites}</b></div>
+                <div><span>能量</span><b>${plant.energy.toFixed(1)} / ${params.energy}（每口 ${params.biteEnergy.toFixed(1)}）</b></div>
+                <div><span>年齡</span><b>${world.tick - plant.bornTick} ticks</b></div>
+                <div><span>可繁殖</span><b>隨時（無成熟期）</b></div>
+                <div><span>來源</span><b>${route}</b></div>
+                ${frozenNow ? '<div class="insp-frozen">☠ 已被吃完（或重播檢視）— 顯示最後快照</div>' : ""}
+            </div>
+        `;
+        card.querySelector("#insp-close")?.addEventListener("click", () => cardOwner().hide());
+    }
+
     // Slight indirection so the close button can call hide() before assignment completes.
     let selfRef: EntityInspector | null = null;
     function cardOwner(): EntityInspector {
-        return selfRef!;
+        if (!selfRef) throw new Error("Inspector not initialized");
+        return selfRef;
     }
 
     const inspector: EntityInspector = {
@@ -150,6 +181,7 @@ export function createInspector(container: HTMLElement): EntityInspector {
             cached = null;
             cachedRows = [];
             cachedMeals = [];
+            cachedPlant = null;
             card.hidden = false;
         },
         hide(): void {
@@ -157,6 +189,7 @@ export function createInspector(container: HTMLElement): EntityInspector {
             cached = null;
             cachedRows = [];
             cachedMeals = [];
+            cachedPlant = null;
             card.hidden = true;
         },
         update(world: World | null): void {
@@ -164,17 +197,28 @@ export function createInspector(container: HTMLElement): EntityInspector {
             if (world === null) {
                 return;
             }
-            const e = world.entities.find((x) => x.id === current && x.alive);
-            if (!e) {
-                // The subject died (or we are in replay): keep the last live
-                // snapshot visible as a frozen card until the user closes it.
+            const targetEntity = world.entities.find((candidate) => candidate.id === current && candidate.alive);
+            if (!targetEntity) {
+                // A selected id that is not an animal may be a tuft: plants and
+                // animals share the sim's id space, so the click needs no kind.
+                const targetPlant = world.plants.find((candidate) => candidate.id === current && candidate.alive);
+                if (targetPlant) {
+                    cachedPlant = targetPlant;
+                    renderPlant(targetPlant, world, false);
+                    return;
+                }
+                // The subject left the world (eaten, killed, or we are in
+                // replay): keep the last live snapshot visible as a frozen card
+                // until the user closes it.
                 if (cached) render(cached, true, cachedRows, cachedMeals);
+                else if (cachedPlant) renderPlant(cachedPlant, world, true);
                 return;
             }
-            cached = e;
-            cachedRows = memoryRows(e, world);
-            cachedMeals = [...e.meals.recent(MEAL_ROWS)];
-            render(e, false, cachedRows, cachedMeals);
+            cachedPlant = null;
+            cached = targetEntity;
+            cachedRows = memoryRows(targetEntity, world);
+            cachedMeals = [...targetEntity.meals.recent(MEAL_ROWS)];
+            render(targetEntity, false, cachedRows, cachedMeals);
         },
         selectedId(): number | null {
             return current;

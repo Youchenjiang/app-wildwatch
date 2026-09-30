@@ -116,6 +116,23 @@ export function carrionPose(remaining: number) {
     return { width, height: width * (0.45 + 0.55 * rem) };
 }
 
+/** Size of a tuft with one bite left, as a fraction of a fresh one. */
+const PLANT_GRAZED_SCALE = 0.55;
+
+/**
+ * Size of a tuft as it is grazed down. `remaining` is the energy standing in it
+ * over a fresh tuft's, so a tuft loses a little height with every bite taken
+ * and how much grass a patch still holds reads from the god camera without
+ * clicking anything. It shrinks rather than vanishing: a tuft with a bite left
+ * is still a tuft, and one that is finished leaves the world entirely — so a
+ * small tuft always means a grazed one, never a half-eaten one that is about
+ * to disappear.
+ */
+export function plantBiteScale(remaining: number): number {
+    const ratio = Math.min(1, Math.max(0, remaining));
+    return PLANT_GRAZED_SCALE + (1 - PLANT_GRAZED_SCALE) * ratio;
+}
+
 /** Seconds a corpse takes to be pulled into the animal eating it. */
 export const FEED_DURATION = 0.28;
 /** Energy a corpse can lose to decay within a single drawn frame. The sim
@@ -594,6 +611,15 @@ export function buildCarrionGeometry(shape: CarrionShape = CARRION_SHAPE): THREE
     return merged;
 }
 
+/**
+ * How close a click has to land to a tuft to count as clicking it, in NDC —
+ * about 2% of the viewport. Only plants get this forgiveness: a tuft is a few
+ * pixels of thin blades, an animal is not.
+ */
+const PICK_SLOP_NDC = 0.03;
+/** The selection ring is drawn for an animal's width; a tuft is smaller. */
+const PLANT_RING_SCALE = 0.7;
+
 /** Keeps a Three.js mesh per sim entity/plant/carrion id, reusing meshes across frames. */
 export class MeshPool {
     /** Update plant colors for a new era. Called when the player switches
@@ -634,6 +660,10 @@ export class MeshPool {
         vertexColors: true,
     });
     private plantSeasonScale = 1;
+    /** Energy in a fresh tuft, so a grazed one can be drawn in proportion. Set
+     * from the live world, and reused for replay frames of that same run: a
+     * frame carries each plant's energy but not the ceiling it was cut from. */
+    private plantFullEnergy = 1;
     /** Seconds of wall clock driving the gait wave; refreshed by each sync. */
     private animTime = 0;
     /** Last drawn position per animal, used to measure travel between frames. */
@@ -742,6 +772,7 @@ export class MeshPool {
     ): void {
         this.animTime = animTime;
         this.cannibalThreshold = world.config.cannibalismThreshold ?? 0;
+        this.plantFullEnergy = world.plantParams.energy;
         const seasonal = (world.config.plantSeasonLength ?? 0) > 0;
         this.syncSeason(seasonal ? world.seasonAbundance : null);
         this.syncCollapsing();
@@ -1061,9 +1092,15 @@ export class MeshPool {
                 this.plantMeshes.set(p.id, mesh);
             }
             // Scaled about the ground, so a lush season makes the tuft taller
-            // instead of lifting its base out of the soil.
-            mesh.scale.setScalar(this.plantSeasonScale);
+            // instead of lifting its base out of the soil — and so a tuft that
+            // has been grazed down a bite or two shows it unasked.
+            mesh.scale.setScalar(
+                this.plantSeasonScale * plantBiteScale(p.energy / this.plantFullEnergy),
+            );
             mesh.position.set(p.x, 0, p.y);
+            // Tufts are pickable: a selected one can be asked how many bites it
+            // has left (see the inspector).
+            this.pickList.push({ id: p.id, mesh });
         }
         this.reap(this.plantMeshes, seenPlant);
     }
@@ -1079,8 +1116,12 @@ export class MeshPool {
                 this.scene.add(mesh);
                 this.plantMeshes.set(id, mesh);
             }
-            mesh.scale.setScalar(this.plantSeasonScale);
+            // A frame records each tuft's remaining energy, so a replay shows
+            // the same grazed-down sizes the live world did.
+            const remaining = (row[3] ?? this.plantFullEnergy) / this.plantFullEnergy;
+            mesh.scale.setScalar(this.plantSeasonScale * plantBiteScale(remaining));
             mesh.position.set(row[1], 0, row[2]);
+            this.pickList.push({ id, mesh });
         }
         this.reap(this.plantMeshes, seen);
     }
@@ -1214,7 +1255,13 @@ export class MeshPool {
     // Picking & selection
     // ------------------------------------------------------------------
 
-    /** Find the animal whose mesh is under screen coordinates (ndcX, ndcY). */
+    /**
+     * Find the subject whose mesh is under screen coordinates (ndcX, ndcY).
+     *
+     * Entities and tufts share one id space (the sim hands out every id, to
+     * animals, plants and corpses alike), so this returns an id and the caller
+     * decides what it belongs to.
+     */
     pick(ndcX: number, ndcY: number, camera: THREE.OrthographicCamera): number | null {
         const raycaster = new THREE.Raycaster();
         raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
@@ -1228,7 +1275,32 @@ export class MeshPool {
                 if (found) return found.id;
             }
         }
-        return null;
+        // A tuft is a few pixels of thin blades at the god camera's framing, so
+        // requiring a ray to hit one is a precision test rather than a gesture.
+        // Fall back to the nearest tuft within a small screen radius — the click
+        // is still deliberate (the caller has already ruled out a drag), just a
+        // forgiving one. Animals are large enough to hit, so only plants get it.
+        return this.nearestPlantTo(ndcX, ndcY, camera);
+    }
+
+    /** The tuft nearest to a click, if one stands within `PICK_SLOP_NDC` of it. */
+    private nearestPlantTo(
+        ndcX: number,
+        ndcY: number,
+        camera: THREE.OrthographicCamera,
+    ): number | null {
+        let bestId: number | null = null;
+        let best = PICK_SLOP_NDC;
+        const point = new THREE.Vector3();
+        for (const [id, mesh] of this.plantMeshes) {
+            point.set(mesh.position.x, 0, mesh.position.z).project(camera);
+            const distance = Math.hypot(point.x - ndcX, point.y - ndcY);
+            if (distance <= best) {
+                best = distance;
+                bestId = id;
+            }
+        }
+        return bestId;
     }
 
     select(id: number | null): void {
@@ -1241,12 +1313,17 @@ export class MeshPool {
             this.ring.visible = false;
             return;
         }
-        const mesh = this.npcMeshes.get(this.selectedId);
+        // An animal or a tuft, whichever the selected id belongs to. The ring is
+        // sized for an animal, so a tuft gets a smaller one instead of a circle
+        // drawn at twice its width.
+        const animal = this.npcMeshes.get(this.selectedId);
+        const mesh = animal ?? this.plantMeshes.get(this.selectedId);
         if (!mesh) {
             this.ring.visible = false;
             return;
         }
         this.ring.visible = true;
+        this.ring.scale.setScalar(animal ? 1 : PLANT_RING_SCALE);
         this.ring.position.set(mesh.position.x, 0.08, mesh.position.z);
     }
 }

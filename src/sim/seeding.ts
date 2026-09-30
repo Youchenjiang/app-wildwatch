@@ -10,14 +10,18 @@
  * encoding (rule 8), the carrion cycle, seasonal vegetation (rule 9) and the
  * turn-energy cost: every candidate in the sweep sustains both species for
  * the full 30,000-tick horizon (the locked seeding itself finishes at
- * h=53 c=50, with every alternate seeding in the sweep surviving too). That
- * baseline has moved twice, deliberately each time. First when sensing and
- * eating reach became true distances rather than grid-cell scans — at the old
- * values a 1.1-unit eat radius reached about 10 units. Then when vegetation
+ * h=54 c=63, with every alternate seeding in the sweep surviving too). That
+ * baseline has moved three times, deliberately each time. First when sensing
+ * and eating reach became true distances rather than grid-cell scans — at the
+ * old values a 1.1-unit eat radius reached about 10 units. Then when vegetation
  * gained geography (plantSpread/plantSpacing/plantColoniseChance below): grass
  * grows from grass in patches instead of appearing at independent uniform
  * positions, which is what gives a forager somewhere worth going. Setting
- * plantSpread to 0 restores the old even sprinkle exactly, h=28 c=49.
+ * plantSpread to 0 restores the old even sprinkle exactly, h=28 c=49. Most
+ * recently when a tuft became several mouthfuls (plantBites below, h=53 c=50
+ * before it): the food per tuft is unchanged, but a grazer can finish the tuft
+ * it is standing on instead of having to find another, which is easier food to
+ * reach and so a larger predator population at the same supply (c=50 -> 63).
  * Each era carries its own validated starting counts
  * (EraConfig.seeding) so a run seeded from an era never drifts out of the
  * envelope that era was tuned in. Re-validate whenever an ecosystem mechanic
@@ -49,6 +53,9 @@ export function makeSeeding(
         plantCount: counts.plantCount ?? BASE_SEEDING.plantCount,
         plantRegrowPerTick: plant.regrowPerTick ?? 1,
         plantEnergy: plant.energy ?? 18,
+        // A tuft is three mouthfuls of the same total food, not three times the
+        // food: a grazer standing in a patch can finish it without ranging on.
+        plantBites: 3,
         maxPlants: plant.maxPlants ?? 500,
         turnLength: 100,
         populationCap: 500,

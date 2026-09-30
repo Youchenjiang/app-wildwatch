@@ -390,6 +390,10 @@ body {
     background: #ff7b6b;
 }
 
+#inspector .dot.plant {
+    background: #3fae5a;
+}
+
 #inspector #insp-close {
     margin-left: auto;
     background: none;

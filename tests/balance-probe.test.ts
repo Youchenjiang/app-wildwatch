@@ -59,7 +59,7 @@ function runSeeding(label: string, overrides: Partial<WorldConfig>): number {
  * vegetation cycle and its own starting counts. The welcome screen seeds a
  * run straight from makeSeeding(seed, era), so an era is only valid if that
  * seeding survives the same 30,000-tick horizon as the baseline. Grassland
- * must reproduce the documented baseline (h=53 c=50) exactly.
+ * must reproduce the documented baseline (h=54 c=63) exactly.
  */
 const ERAS: readonly EraConfig[] = [grasslandEra, iceAgeEra, desertEra];
 
@@ -121,16 +121,19 @@ describe("era sweep", () => {
         // this number deliberately (and be re-validated), never by accident.
         // Moved deliberately when sensing and eating reach became true
         // distances (it was h=31 c=41 while eatRadius only chose which grid
-        // cells to scan, which gave both species a reach of about a cell), and
-        // again when vegetation gained geography (h=28 c=49 while grass grew at
-        // independent uniform positions and no place was worth going to).
+        // cells to scan, which gave both species a reach of about a cell), then
+        // when vegetation gained geography (h=28 c=49 while grass grew at
+        // independent uniform positions and no place was worth going to), and
+        // most recently when a tuft became three mouthfuls instead of one
+        // (h=53 c=50 -> h=54 c=63: the same food per tuft, but reachable without
+        // leaving the patch, which is what a predator population follows).
         const grassland = results.find((resultItem) => resultItem.era.name === "Grassland");
         expect(grassland).toBeDefined();
         if (!grassland) {
             throw new Error("Grassland era missing");
         }
-        expect(grassland.herb, "grassland baseline drifted").toBe(53);
-        expect(grassland.carn, "grassland baseline drifted").toBe(50);
+        expect(grassland.herb, "grassland baseline drifted").toBe(54);
+        expect(grassland.carn, "grassland baseline drifted").toBe(63);
 
         // Kin feeding is only observable in a real run: it needs a parent and
         // its offspring to both die inside the same reach of a scavenger. A
@@ -202,8 +205,8 @@ describe("reproduction mode sweep", () => {
         // Asexual must reproduce the locked grassland baseline exactly: choosing
         // it explicitly is not allowed to be a different run from the default.
         expect(asexual.ticks, "asexual mode did not sustain the baseline").toBe(TARGET_TICKS);
-        expect(asexual.herb, "asexual baseline drifted").toBe(53);
-        expect(asexual.carn, "asexual baseline drifted").toBe(50);
+        expect(asexual.herb, "asexual baseline drifted").toBe(54);
+        expect(asexual.carn, "asexual baseline drifted").toBe(63);
         expect(asexual.sexual, "asexual mode mated anyway").toBe(0);
 
         // Sexual must actually fire, and never quietly fall back to cloning.
