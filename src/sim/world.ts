@@ -956,6 +956,22 @@ export class World {
             // steering toward food.
             entity.memory.record(inputs, steer, bite, entity.age);
             entity.meals.add({ source: "plant", energy: bite, age: entity.age });
+            this.triggerJuvenileImitation(entity, inputs, steer);
+        }
+    }
+
+    private triggerJuvenileImitation(mother: Entity, inputs: number[], steer: number): void {
+        const observationRadius = 15;
+        for (let i = 0; i < this.entities.length; i++) {
+            const cub = this.entities[i];
+            if (cub.alive && cub.isJuvenile && cub.motherId === mother.id) {
+                const dist = Math.hypot(cub.pos.x - mother.pos.x, cub.pos.y - mother.pos.y);
+                if (dist <= observationRadius) {
+                    const cubSense = this.sense(cub);
+                    const cubInputs = this.buildInputs(cub, cubSense);
+                    cub.brain.learnImitation(cubInputs, [steer, 1.0], 0.05);
+                }
+            }
         }
     }
 
@@ -1003,6 +1019,7 @@ export class World {
                 victimId: found.item.id,
                 victimGeneration: found.item.generation,
             });
+            this.triggerJuvenileImitation(entity, inputs, steer);
         }
     }
 
