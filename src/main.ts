@@ -46,7 +46,10 @@ async function syncGodMemory() {
         // Fallback default god memory is already in place
     }
 }
-syncGodMemory().catch(() => {});
+syncGodMemory().catch((err: unknown) => {
+    // Fallback default god memory remains in place if network or parsing fails
+    console.debug("God memory background load fallback:", err);
+});
 
 let world = new World({ ...makeSeeding(), founderGenomes });
 let ctx: RenderContext = createRenderContext(
