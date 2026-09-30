@@ -15,7 +15,7 @@ describe("Persistence & God Memory Loader", () => {
 
         const input = new Array(11).fill(0.2);
         const output = brain.forward(input);
-        expect(output.length).toBe(2);
+        expect(output).toHaveLength(2);
         expect(Number.isFinite(output[0])).toBe(true);
         expect(Number.isFinite(output[1])).toBe(true);
     });
@@ -23,8 +23,8 @@ describe("Persistence & God Memory Loader", () => {
     it("creates a valid default GodMemory fallback", () => {
         const fallback = createDefaultGodMemory();
         expect(fallback.version).toBe("1.0.0-fallback");
-        expect(fallback.sacredSeeds.herbivore.weights.w1.length).toBe(55);
-        expect(fallback.sacredSeeds.carnivore.weights.w1.length).toBe(55);
+        expect(fallback.sacredSeeds.herbivore.weights.w1).toHaveLength(55);
+        expect(fallback.sacredSeeds.carnivore.weights.w1).toHaveLength(55);
     });
 
     it("loads god memory via fetch when available", async () => {
@@ -74,8 +74,8 @@ describe("Persistence & God Memory Loader", () => {
         const herbivores = world.entities.filter((e) => e.species.kind === "herbivore");
         const carnivores = world.entities.filter((e) => e.species.kind === "carnivore");
 
-        expect(herbivores.length).toBe(10);
-        expect(carnivores.length).toBe(2);
+        expect(herbivores).toHaveLength(10);
+        expect(carnivores).toHaveLength(2);
 
         // Verify founder brain weights correlate with the sacred seed (within light mutation distance)
         const herbSample = herbivores[0].brain;

@@ -37,11 +37,15 @@ const founderGenomes = {
     herbivore: sacredSeedToBrain(godMemory.sacredSeeds.herbivore),
     carnivore: sacredSeedToBrain(godMemory.sacredSeeds.carnivore),
 };
-loadGodMemory("./data/god-memory.json").then((loaded) => {
-    godMemory = loaded;
-    founderGenomes.herbivore = sacredSeedToBrain(godMemory.sacredSeeds.herbivore);
-    founderGenomes.carnivore = sacredSeedToBrain(godMemory.sacredSeeds.carnivore);
-});
+void (async () => {
+    try {
+        godMemory = await loadGodMemory("./data/god-memory.json");
+        founderGenomes.herbivore = sacredSeedToBrain(godMemory.sacredSeeds.herbivore);
+        founderGenomes.carnivore = sacredSeedToBrain(godMemory.sacredSeeds.carnivore);
+    } catch {
+        // Fallback default god memory is already in place
+    }
+})();
 
 let world = new World({ ...makeSeeding(), founderGenomes });
 let ctx: RenderContext = createRenderContext(

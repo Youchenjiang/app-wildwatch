@@ -33,10 +33,10 @@ describe("God Memory Schema & Asset", () => {
             expect(outputSize).toBe(2);
 
             const { w1, b1, w2, b2 } = seed.weights;
-            expect(w1.length).toBe(inputSize * hiddenSize);
-            expect(b1.length).toBe(hiddenSize);
-            expect(w2.length).toBe(hiddenSize * outputSize);
-            expect(b2.length).toBe(outputSize);
+            expect(w1).toHaveLength(inputSize * hiddenSize);
+            expect(b1).toHaveLength(hiddenSize);
+            expect(w2).toHaveLength(hiddenSize * outputSize);
+            expect(b2).toHaveLength(outputSize);
 
             // Reconstruct Brain instance and ensure non-NaN forward pass
             const brain = new Brain(
@@ -49,7 +49,7 @@ describe("God Memory Schema & Asset", () => {
 
             const dummyInput = new Array(inputSize).fill(0.5);
             const output = brain.forward(dummyInput);
-            expect(output.length).toBe(outputSize);
+            expect(output).toHaveLength(outputSize);
             for (let i = 0; i < outputSize; i++) {
                 expect(Number.isFinite(output[i])).toBe(true);
                 expect(Number.isNaN(output[i])).toBe(false);

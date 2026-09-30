@@ -490,21 +490,18 @@ export class World {
                   y: parent.pos.y + randRange(this.rng, -2, 2),
               })
             : this.randomPos();
-        const brain = parent
-            ? (() => {
-                  const child = secondParent
-                      ? parent.brain.crossover(secondParent.brain, this.rng)
-                      : parent.brain.clone();
-                  child.mutate(this.config.mutationRate, this.config.mutationSigma, this.rng);
-                  return child;
-              })()
-            : initialBrain
-                ? (() => {
-                      const seedBrain = initialBrain.clone();
-                      seedBrain.mutate(this.config.mutationRate, this.config.mutationSigma, this.rng);
-                      return seedBrain;
-                  })()
-                : Brain.random(this.config.brainSpec, this.rng);
+        let brain: Brain;
+        if (parent) {
+            brain = secondParent
+                ? parent.brain.crossover(secondParent.brain, this.rng)
+                : parent.brain.clone();
+            brain.mutate(this.config.mutationRate, this.config.mutationSigma, this.rng);
+        } else if (initialBrain) {
+            brain = initialBrain.clone();
+            brain.mutate(this.config.mutationRate, this.config.mutationSigma, this.rng);
+        } else {
+            brain = Brain.random(this.config.brainSpec, this.rng);
+        }
         const entity = new Entity(
             species,
             pos,
