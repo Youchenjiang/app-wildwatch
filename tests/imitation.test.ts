@@ -5,10 +5,10 @@ import { makeSeeding } from "../src/sim/seeding";
 
 describe("Behavior Cloning & Juvenile Imitation Learning", () => {
     it("learnImitation reduces prediction error via backpropagation", () => {
-        let s = 12345;
+        let seed = 12345;
         const rng = () => {
-            s = (s * 1664525 + 1013904223) % 4294967296;
-            return s / 4294967296;
+            seed = (seed * 1664525 + 1013904223) % 4294967296;
+            return seed / 4294967296;
         };
         const brain = Brain.random(DEFAULT_BRAIN_SPEC, rng);
         const inputs = [0.5, -0.2, 0.8, 0.1, 0, 0, 0, 0, 0, 0, 0];
