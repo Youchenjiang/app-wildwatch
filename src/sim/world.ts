@@ -243,7 +243,7 @@ export interface WorldConfig {
      * predators are crowded and herbivores are scarce.
      */
     cannibalismThreshold?: number;
-    /** How many ticks an offspring remains in the juvenile follower stage (default 200). */
+    /** How many ticks an offspring remains in the juvenile follower stage (default 0, off). */
     juvenileDuration?: number;
     /** Pre-evolved sacred founder brains from god memory (fallback to random if unset). */
     founderGenomes?: {
@@ -518,7 +518,7 @@ export class World {
         if (secondParent && parent) {
             entity.parentIds = [parent.id, secondParent.id];
             entity.motherId = parent.id;
-            entity.juvenileDuration = this.config.juvenileDuration ?? 200;
+            entity.juvenileDuration = this.config.juvenileDuration ?? 0;
         } else if (parent) {
             // An asexual clone has one parent, recorded twice. Slot 1 used to
             // hold the grandparent instead, which made it mean a second parent
@@ -527,7 +527,7 @@ export class World {
             // walk now (src/sim/lineage.ts), so the slot can just say "parent".
             entity.parentIds = [parent.id, parent.id];
             entity.motherId = parent.id;
-            entity.juvenileDuration = this.config.juvenileDuration ?? 200;
+            entity.juvenileDuration = this.config.juvenileDuration ?? 0;
         }
         // Record the link before the entity can ever die: the population keeps
         // only the living, so a chain must survive its own ancestors.
