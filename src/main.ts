@@ -32,24 +32,11 @@ function eraAtmosphereColors(era?: EraConfig) {
     return era ? atmosphereColorsForEra(era) : defaultAtmosphereColors();
 }
 
-let godMemory = createDefaultGodMemory();
+const godMemory = await loadGodMemory("./data/god-memory.json");
 const founderGenomes = {
     herbivore: sacredSeedToBrain(godMemory.sacredSeeds.herbivore),
     carnivore: sacredSeedToBrain(godMemory.sacredSeeds.carnivore),
 };
-async function syncGodMemory() {
-    try {
-        godMemory = await loadGodMemory("./data/god-memory.json");
-        founderGenomes.herbivore = sacredSeedToBrain(godMemory.sacredSeeds.herbivore);
-        founderGenomes.carnivore = sacredSeedToBrain(godMemory.sacredSeeds.carnivore);
-    } catch {
-        // Fallback default god memory is already in place
-    }
-}
-syncGodMemory().catch((err: unknown) => {
-    // Fallback default god memory remains in place if network or parsing fails
-    console.debug("God memory background load fallback:", err);
-});
 
 let world = new World({ ...makeSeeding(), founderGenomes });
 let ctx: RenderContext = createRenderContext(
