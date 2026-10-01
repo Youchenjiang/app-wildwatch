@@ -1,7 +1,49 @@
 import { describe, expect, it } from "vitest";
 import { Brain } from "../src/sim/brain";
+import type { Entity } from "../src/sim/entity";
 import { World, DEFAULT_BRAIN_SPEC } from "../src/sim/world";
 import { makeSeeding } from "../src/sim/seeding";
+
+/** Checks whether any element in a Float32Array changed compared to a snapshot. */
+function weightsChanged(current: Float32Array, snapshot: Float32Array): boolean {
+    for (let i = 0; i < current.length; i++) {
+        if (current[i] !== snapshot[i]) return true;
+    }
+    return false;
+}
+
+/** Builds a minimal two-herbivore world with a plant nearby and a juvenile cub. */
+function makeImitationWorld(cubOffsetX: number, cubOffsetY: number): {
+    world: World;
+    cub: Entity;
+    cubWeightSnapshot: Float32Array;
+} {
+    const config = {
+        ...makeSeeding(20260907),
+        herbivoreCount: 2,
+        carnivoreCount: 0,
+        plantCount: 50,
+        juvenileDuration: 300,
+    };
+    const world = new World(config);
+    const mother = world.entities[0];
+    const cub = world.entities[1];
+
+    const plant = world.plants[0];
+    mother.pos.x = plant.x;
+    mother.pos.y = plant.y;
+    mother.energy = 50;
+
+    cub.pos.x = plant.x + cubOffsetX;
+    cub.pos.y = plant.y + cubOffsetY;
+    cub.motherId = mother.id;
+    cub.juvenileDuration = 300;
+    cub.age = 10;
+    cub.energy = 50;
+
+    const cubWeightSnapshot = new Float32Array(cub.brain.w1);
+    return { world, cub, cubWeightSnapshot };
+}
 
 describe("Behavior Cloning & Juvenile Imitation Learning", () => {
     it("learnImitation reduces prediction error via backpropagation", () => {
@@ -31,84 +73,16 @@ describe("Behavior Cloning & Juvenile Imitation Learning", () => {
     });
 
     it("triggers imitation in nearby juveniles when mother grazes", () => {
-        const config = {
-            ...makeSeeding(20260907),
-            herbivoreCount: 2,
-            carnivoreCount: 0,
-            plantCount: 50,
-            juvenileDuration: 300,
-        };
-        const world = new World(config);
-        const mother = world.entities[0];
-        const cub = world.entities[1];
-
-        // Position mother near a plant
-        const plant = world.plants[0];
-        mother.pos.x = plant.x;
-        mother.pos.y = plant.y;
-        mother.energy = 50;
-
-        // Position cub close to mother (within 5 units)
-        cub.pos.x = plant.x + 2;
-        cub.pos.y = plant.y + 2;
-        cub.motherId = mother.id;
-        cub.juvenileDuration = 300;
-        cub.age = 10;
-        cub.energy = 50;
-
-        const cubWeightBefore = new Float32Array(cub.brain.w1);
-
-        // Run a tick where mother grazes
+        // Cub is 2 units away — within the 15-unit observation radius
+        const { world, cub, cubWeightSnapshot } = makeImitationWorld(2, 2);
         world.tickStep();
-
-        // Check if cub weights updated due to witnessing mother
-        let weightChanged = false;
-        for (let i = 0; i < cub.brain.w1.length; i++) {
-            if (cub.brain.w1[i] !== cubWeightBefore[i]) {
-                weightChanged = true;
-                break;
-            }
-        }
-        expect(weightChanged).toBe(true);
+        expect(weightsChanged(cub.brain.w1, cubWeightSnapshot)).toBe(true);
     });
 
     it("does not trigger imitation when juvenile is outside observation radius", () => {
-        const config = {
-            ...makeSeeding(20260907),
-            herbivoreCount: 2,
-            carnivoreCount: 0,
-            plantCount: 50,
-            juvenileDuration: 300,
-        };
-        const world = new World(config);
-        const mother = world.entities[0];
-        const cub = world.entities[1];
-
-        const plant = world.plants[0];
-        mother.pos.x = plant.x;
-        mother.pos.y = plant.y;
-        mother.energy = 50;
-
-        // Position cub far away (> 20 units)
-        cub.pos.x = plant.x + 50;
-        cub.pos.y = plant.y + 50;
-        cub.motherId = mother.id;
-        cub.juvenileDuration = 300;
-        cub.age = 10;
-        cub.energy = 50;
-
-        const cubWeightBefore = new Float32Array(cub.brain.w1);
-
+        // Cub is 50 units away — outside the 15-unit observation radius
+        const { world, cub, cubWeightSnapshot } = makeImitationWorld(50, 50);
         world.tickStep();
-
-        // Cub was too far away to observe, weights must remain unchanged
-        let weightChanged = false;
-        for (let i = 0; i < cub.brain.w1.length; i++) {
-            if (cub.brain.w1[i] !== cubWeightBefore[i]) {
-                weightChanged = true;
-                break;
-            }
-        }
-        expect(weightChanged).toBe(false);
+        expect(weightsChanged(cub.brain.w1, cubWeightSnapshot)).toBe(false);
     });
 });
