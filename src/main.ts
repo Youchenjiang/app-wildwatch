@@ -17,7 +17,7 @@ import { createWelcome } from "./ui/welcome";
 import { ReplayRecorder } from "./observe/replay";
 import { DEFAULT_TICKS_PER_SECOND, SPEED_STEPS, advanceTicks } from "./observe/pacing";
 import { desertEra, grasslandEra, iceAgeEra } from "./sim/era";
-import { createDefaultGodMemory, loadGodMemory, sacredSeedToBrain } from "./sim/persistence";
+import { loadGodMemory, sacredSeedToBrain } from "./sim/persistence";
 
 import type { EraConfig } from "./sim/era";
 
