@@ -782,7 +782,7 @@ export class World {
     private applySocialSteering(
         e: Entity,
         s: SpeciesParams,
-        sense: SenseResult | null,
+        sense: Sense | null,
         steer: number,
         thrust: number,
     ): { steer: number; thrust: number } {
