@@ -695,9 +695,9 @@ export class World {
 
     /** Finds a living entity by its unique ID. */
     getEntityById(id: number): Entity | undefined {
-        for (let i = 0; i < this.entities.length; i++) {
-            if (this.entities[i].id === id && this.entities[i].alive) {
-                return this.entities[i];
+        for (const entity of this.entities) {
+            if (entity.id === id && entity.alive) {
+                return entity;
             }
         }
         return undefined;
@@ -962,8 +962,7 @@ export class World {
 
     private triggerJuvenileImitation(mother: Entity, inputs: number[], steer: number): void {
         const observationRadius = 15;
-        for (let i = 0; i < this.entities.length; i++) {
-            const cub = this.entities[i];
+        for (const cub of this.entities) {
             if (cub.alive && cub.isJuvenile && cub.motherId === mother.id) {
                 const dist = Math.hypot(cub.pos.x - mother.pos.x, cub.pos.y - mother.pos.y);
                 if (dist <= observationRadius) {
