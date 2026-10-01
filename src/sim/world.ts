@@ -243,6 +243,8 @@ export interface WorldConfig {
      * predators are crowded and herbivores are scarce.
      */
     cannibalismThreshold?: number;
+    /** How many ticks an offspring remains in the juvenile follower stage (default 0, off). */
+    juvenileDuration?: number;
     /** Pre-evolved sacred founder brains from god memory (fallback to random if unset). */
     founderGenomes?: {
         herbivore?: import("./brain").Brain;
@@ -515,6 +517,8 @@ export class World {
         entity.generation = generation;
         if (secondParent && parent) {
             entity.parentIds = [parent.id, secondParent.id];
+            entity.motherId = parent.id;
+            entity.juvenileDuration = this.config.juvenileDuration ?? 0;
         } else if (parent) {
             // An asexual clone has one parent, recorded twice. Slot 1 used to
             // hold the grandparent instead, which made it mean a second parent
@@ -522,6 +526,8 @@ export class World {
             // could tell how far up an ancestor actually sat. Ancestry is a
             // walk now (src/sim/lineage.ts), so the slot can just say "parent".
             entity.parentIds = [parent.id, parent.id];
+            entity.motherId = parent.id;
+            entity.juvenileDuration = this.config.juvenileDuration ?? 0;
         }
         // Record the link before the entity can ever die: the population keeps
         // only the living, so a chain must survive its own ancestors.
@@ -687,6 +693,16 @@ export class World {
         return kept;
     }
 
+    /** Finds a living entity by its unique ID. */
+    getEntityById(id: number): Entity | undefined {
+        for (const entity of this.entities) {
+            if (entity.id === id && entity.alive) {
+                return entity;
+            }
+        }
+        return undefined;
+    }
+
     private updateEntity(e: Entity): void {
         const s = e.species;
         e.age++;
@@ -697,8 +713,13 @@ export class World {
 
         // Bias behavior with episodic recall before the brain acts.
         const out = this.brainForwardWithRecall(e, inputs);
-        const steer = out[0];
-        const thrust = (out[1] + 1) / 2;
+        let steer = out[0];
+        let thrust = (out[1] + 1) / 2;
+
+        // Juveniles imprint on and follow their mother
+        const steered = this.applyJuvenileSteering(e, steer, thrust);
+        steer = steered.steer;
+        thrust = steered.thrust;
 
         const steerMag = Math.abs(steer);
         e.angle += steer * s.maxTurn;
@@ -724,6 +745,20 @@ export class World {
         if (e.energy <= 0 || e.age >= s.maxAge) {
             this.kill(e, e.energy <= 0 ? "starvation" : "old age");
         }
+    }
+
+    private applyJuvenileSteering(e: Entity, steer: number, thrust: number): { steer: number; thrust: number } {
+        if (!e.isJuvenile || e.motherId === null) return { steer, thrust };
+        const mother = this.getEntityById(e.motherId);
+        if (!mother) return { steer, thrust };
+        const dx = mother.pos.x - e.pos.x;
+        const dy = mother.pos.y - e.pos.y;
+        if (Math.hypot(dx, dy) <= 2.5) return { steer, thrust };
+        const targetAngle = Math.atan2(dy, dx);
+        let angleDiff = targetAngle - e.angle;
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+        return { steer: steer * 0.3 + Math.sign(angleDiff) * 0.7, thrust: Math.max(thrust, 0.75) };
     }
 
     // ---------------------------------------------------------------------
@@ -922,6 +957,21 @@ export class World {
             // steering toward food.
             entity.memory.record(inputs, steer, bite, entity.age);
             entity.meals.add({ source: "plant", energy: bite, age: entity.age });
+            this.triggerJuvenileImitation(entity, inputs, steer);
+        }
+    }
+
+    private triggerJuvenileImitation(mother: Entity, inputs: number[], steer: number): void {
+        const observationRadius = 15;
+        for (const cub of this.entities) {
+            if (cub.alive && cub.isJuvenile && cub.motherId === mother.id) {
+                const dist = Math.hypot(cub.pos.x - mother.pos.x, cub.pos.y - mother.pos.y);
+                if (dist <= observationRadius) {
+                    const cubSense = this.sense(cub);
+                    const cubInputs = this.buildInputs(cub, cubSense);
+                    cub.brain.learnImitation(cubInputs, [steer, 1.0], 0.05);
+                }
+            }
         }
     }
 
@@ -969,6 +1019,7 @@ export class World {
                 victimId: found.item.id,
                 victimGeneration: found.item.generation,
             });
+            this.triggerJuvenileImitation(entity, inputs, steer);
         }
     }
 
