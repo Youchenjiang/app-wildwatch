@@ -1,3 +1,5 @@
+import type { BrainSpec } from "./brain";
+
 /** Simulation runs on a 2D plane; 3D is purely a visual layer on top. */
 export interface Vec2 {
     x: number;
@@ -5,6 +7,47 @@ export interface Vec2 {
 }
 
 export type SpeciesKind = "herbivore" | "carnivore";
+
+/** Serialized neural network weights suitable for JSON persistence. */
+export interface SerializedBrainWeights {
+    w1: number[];
+    b1: number[];
+    w2: number[];
+    b2: number[];
+}
+
+/** Pre-evolved archetype seed for a species, tested across eons. */
+export interface SacredSeed {
+    species: SpeciesKind;
+    fitness: number;
+    spec: BrainSpec;
+    weights: SerializedBrainWeights;
+}
+
+/** God's meta-policy hyper-parameters for ecosystem regulation. */
+export interface GodPolicy {
+    /** Prey population count below which bountiful rain is triggered. */
+    rainPreyThreshold: number;
+    /** Predator population count above which metabolic blight is triggered. */
+    blightPredatorThreshold: number;
+    /** Cooldown in ticks between god interventions. */
+    interventionCooldown: number;
+    /** Baseline tendency toward pack cohesion (0: solitary, 1: tight pack). */
+    socialTendency: number;
+}
+
+/** God's persistent memory across generations, loaded by GitHub Pages. */
+export interface GodMemory {
+    version: string;
+    updatedAt: string;
+    eons: number;
+    sacredSeeds: {
+        herbivore: SacredSeed;
+        carnivore: SacredSeed;
+    };
+    policy: GodPolicy;
+}
+
 
 /** Tuning parameters that define a species (later scenarios will vary these). */
 export interface SpeciesParams {
