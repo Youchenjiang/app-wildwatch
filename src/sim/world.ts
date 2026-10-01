@@ -717,22 +717,9 @@ export class World {
         let thrust = (out[1] + 1) / 2;
 
         // Juveniles imprint on and follow their mother
-        if (e.isJuvenile && e.motherId !== null) {
-            const mother = this.getEntityById(e.motherId);
-            if (mother) {
-                const dx = mother.pos.x - e.pos.x;
-                const dy = mother.pos.y - e.pos.y;
-                const distToMother = Math.hypot(dx, dy);
-                if (distToMother > 2.5) {
-                    const targetAngle = Math.atan2(dy, dx);
-                    let angleDiff = targetAngle - e.angle;
-                    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-                    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-                    steer = steer * 0.3 + Math.sign(angleDiff) * 0.7;
-                    thrust = Math.max(thrust, 0.75);
-                }
-            }
-        }
+        const steered = this.applyJuvenileSteering(e, steer, thrust);
+        steer = steered.steer;
+        thrust = steered.thrust;
 
         const steerMag = Math.abs(steer);
         e.angle += steer * s.maxTurn;
@@ -758,6 +745,20 @@ export class World {
         if (e.energy <= 0 || e.age >= s.maxAge) {
             this.kill(e, e.energy <= 0 ? "starvation" : "old age");
         }
+    }
+
+    private applyJuvenileSteering(e: Entity, steer: number, thrust: number): { steer: number; thrust: number } {
+        if (!e.isJuvenile || e.motherId === null) return { steer, thrust };
+        const mother = this.getEntityById(e.motherId);
+        if (!mother) return { steer, thrust };
+        const dx = mother.pos.x - e.pos.x;
+        const dy = mother.pos.y - e.pos.y;
+        if (Math.hypot(dx, dy) <= 2.5) return { steer, thrust };
+        const targetAngle = Math.atan2(dy, dx);
+        let angleDiff = targetAngle - e.angle;
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+        return { steer: steer * 0.3 + Math.sign(angleDiff) * 0.7, thrust: Math.max(thrust, 0.75) };
     }
 
     // ---------------------------------------------------------------------

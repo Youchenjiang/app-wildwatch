@@ -134,21 +134,27 @@ export class Brain {
         const hiddenDelta = new Float32Array(hiddenSize);
         for (let j = 0; j < hiddenSize; j++) {
             let error = 0;
-            for (let k = 0; k < outputSize; k++) {
-                error += outDelta[k] * this.w2[k * hiddenSize + j];
-            }
+            for (let k = 0; k < outputSize; k++) error += outDelta[k] * this.w2[k * hiddenSize + j];
             hiddenDelta[j] = error * (1 - hidden[j] * hidden[j]);
         }
 
-        // Update layer 2 weights and biases
+        this.updateWeights(inputs, hidden, outDelta, hiddenDelta, learningRate);
+    }
+
+    private updateWeights(
+        inputs: readonly number[],
+        hidden: Float32Array,
+        outDelta: Float32Array,
+        hiddenDelta: Float32Array,
+        learningRate: number,
+    ): void {
+        const { inputSize, hiddenSize, outputSize } = this.spec;
         for (let k = 0; k < outputSize; k++) {
             this.b2[k] += learningRate * outDelta[k];
             for (let j = 0; j < hiddenSize; j++) {
                 this.w2[k * hiddenSize + j] += learningRate * outDelta[k] * hidden[j];
             }
         }
-
-        // Update layer 1 weights and biases
         for (let j = 0; j < hiddenSize; j++) {
             this.b1[j] += learningRate * hiddenDelta[j];
             for (let i = 0; i < inputSize; i++) {
@@ -156,4 +162,4 @@ export class Brain {
             }
         }
     }
-}
+}
