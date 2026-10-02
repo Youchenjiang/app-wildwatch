@@ -1255,6 +1255,10 @@ export class World {
         }
         return best;
     }
+    /** Kill an entity externally (e.g. divine intervention), preserving carrion and death records. */
+    cullEntity(e: Entity, reason: string): void {
+        this.kill(e, reason);
+    }
 
     private kill(e: Entity, reason: string): void {
         if (!e.alive) return;

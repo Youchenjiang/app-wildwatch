@@ -68,7 +68,7 @@ export class GodAgent {
         }
 
         // Adaptive Cohesion Tuning: If predators are struggling to hunt (< 6), boost pack cohesion
-        if (carns < 8 && this.world.config.socialMode === "pack") {
+        if (carns < 6 && this.world.config.socialMode === "pack") {
             const currentCohesion = this.world.config.socialCohesion ?? 0.5;
             if (currentCohesion < 0.95) {
                 const newCohesion = Math.min(1.0, currentCohesion + 0.15);
@@ -94,17 +94,18 @@ export class GodAgent {
     metabolicBlight(): void {
         const carns = this.world.entities
             .filter((e) => e.alive && e.species.kind === "carnivore")
-            .sort((a, b) => a.energy - b.energy);
+            .sort((a, b) => a.energy - b.energy || b.age - a.age);
 
         const cullCount = Math.min(carns.length - 4, Math.ceil(carns.length * 0.25));
         for (const carn of carns.slice(0, cullCount)) {
-            carn.alive = false;
+            this.world.cullEntity(carn, "metabolic blight");
         }
     }
 
     /** Observe top-performing organisms and archive champion genomes into sacred seeds. */
     harvestSacredSeeds(): void {
         const kinds: SpeciesKind[] = ["herbivore", "carnivore"];
+        let updated = false;
         for (const kind of kinds) {
             const pool = this.world.entities.filter((e) => e.alive && e.species.kind === kind);
             if (pool.length === 0) continue;
@@ -119,10 +120,13 @@ export class GodAgent {
                     spec: champion.brain.spec,
                     weights: GodAgent.serializeBrain(champion.brain),
                 };
+                updated = true;
             }
         }
-        this.memory.updatedAt = new Date().toISOString();
-        this.memory.eons = (this.memory.eons || 1) + 1;
+        if (updated) {
+            this.memory.updatedAt = new Date().toISOString();
+            this.memory.eons = (this.memory.eons || 1) + 1;
+        }
     }
 
     private static serializeBrain(brain: Brain): SerializedBrainWeights {
