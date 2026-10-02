@@ -136,6 +136,6 @@ export class GodAgent {
 
     /** Export the latest GodMemory state as a downloadable JSON string. */
     exportMemory(): GodMemory {
-        return JSON.parse(JSON.stringify(this.memory));
+        return structuredClone(this.memory);
     }
 }

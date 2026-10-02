@@ -63,7 +63,7 @@ describe("God Agent & Ecosystem Oversight", () => {
         god.harvestSacredSeeds();
 
         expect(god.memory.sacredSeeds.herbivore.fitness).toBe(99999);
-        expect(god.memory.sacredSeeds.herbivore.weights.w1.length).toBe(
+        expect(god.memory.sacredSeeds.herbivore.weights.w1).toHaveLength(
             starHerb.brain.spec.inputSize * starHerb.brain.spec.hiddenSize,
         );
 

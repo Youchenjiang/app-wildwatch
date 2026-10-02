@@ -73,29 +73,24 @@ export function createInspector(container: HTMLElement): EntityInspector {
         }));
     }
 
-    function render(e: Entity, frozenNow: boolean, rows: MemoryRow[], meals: Meal[]): void {
-        const s = e.species;
-        const kindName = s.kind === "herbivore" ? "草食" : "肉食";
-        const counts = e.meals.counts();
-        const kin = e.meals.kinCount();
-
-        card.textContent = "";
-
-        // Head
+    function createInspectorHead(e: Entity, kindName: string, onClose: () => void): HTMLElement {
         const head = document.createElement("div");
         head.className = "insp-head";
         const dot = document.createElement("span");
-        dot.className = `dot ${s.kind === "herbivore" ? "herb" : "carn"}`;
+        dot.className = `dot ${e.species.kind === "herbivore" ? "herb" : "carn"}`;
         const titleSpan = document.createElement("span");
         titleSpan.textContent = `${kindName} #${e.id}`;
         const closeBtn = document.createElement("button");
         closeBtn.id = "insp-close";
         closeBtn.title = "關閉";
         closeBtn.textContent = "✕";
-        closeBtn.addEventListener("click", () => cardOwner().hide());
+        closeBtn.addEventListener("click", onClose);
         head.append(dot, titleSpan, closeBtn);
+        return head;
+    }
 
-        // Rows
+    function createInspectorRows(e: Entity, frozenNow: boolean): HTMLElement {
+        const s = e.species;
         const rowsEl = document.createElement("div");
         rowsEl.className = "insp-rows";
         const addRow = (label: string, val: string) => {
@@ -132,46 +127,55 @@ export function createInspector(container: HTMLElement): EntityInspector {
             frozenDiv.textContent = "☠ 個體已死亡（或重播檢視）— 顯示最後快照";
             rowsEl.appendChild(frozenDiv);
         }
+        return rowsEl;
+    }
 
-        // Memory Section
+    function createMemorySection(rows: MemoryRow[]): HTMLElement[] {
         const memTitle = document.createElement("div");
         memTitle.className = "insp-mem-title";
         memTitle.textContent = `記憶 · 最近 ${rows.length} 條`;
 
-        let memEl: HTMLElement;
         if (rows.length === 0) {
-            memEl = document.createElement("div");
-            memEl.className = "insp-mem-empty";
-            memEl.textContent = "尚無記憶 — 還沒吃過東西";
-        } else {
-            memEl = document.createElement("div");
-            memEl.className = "insp-mem";
-            const memHead = document.createElement("div");
-            memHead.className = "insp-mem-head";
-            ["相似", "轉向", "獎勵", "多久前"].forEach((text) => {
-                const sp = document.createElement("span");
-                sp.textContent = text;
-                memHead.appendChild(sp);
-            });
-            memEl.appendChild(memHead);
-            for (const r of rows) {
-                const memRow = document.createElement("div");
-                memRow.className = "insp-mem-row";
-                const simI = document.createElement("i");
-                simI.style.color = simColor(r.similarity);
-                simI.textContent = r.similarity.toFixed(2);
-                const steerSpan = document.createElement("span");
-                steerSpan.textContent = formatSteer(r.actionHint);
-                const rewB = document.createElement("b");
-                rewB.textContent = `+${r.reward.toFixed(0)}`;
-                const agoEm = document.createElement("em");
-                agoEm.textContent = `${r.ago}t`;
-                memRow.append(simI, steerSpan, rewB, agoEm);
-                memEl.appendChild(memRow);
-            }
+            const emptyEl = document.createElement("div");
+            emptyEl.className = "insp-mem-empty";
+            emptyEl.textContent = "尚無記憶 — 還沒吃過東西";
+            return [memTitle, emptyEl];
         }
 
-        // Meals Section
+        const memEl = document.createElement("div");
+        memEl.className = "insp-mem";
+        const memHead = document.createElement("div");
+        memHead.className = "insp-mem-head";
+        ["相似", "轉向", "獎勵", "多久前"].forEach((text) => {
+            const sp = document.createElement("span");
+            sp.textContent = text;
+            memHead.appendChild(sp);
+        });
+        memEl.appendChild(memHead);
+        for (const r of rows) {
+            const memRow = document.createElement("div");
+            memRow.className = "insp-mem-row";
+            const simI = document.createElement("i");
+            simI.style.color = simColor(r.similarity);
+            simI.textContent = r.similarity.toFixed(2);
+            const steerSpan = document.createElement("span");
+            steerSpan.textContent = formatSteer(r.actionHint);
+            const rewB = document.createElement("b");
+            rewB.textContent = `+${r.reward.toFixed(0)}`;
+            const agoEm = document.createElement("em");
+            agoEm.textContent = `${r.ago}t`;
+            memRow.append(simI, steerSpan, rewB, agoEm);
+            memEl.appendChild(memRow);
+        }
+        return [memTitle, memEl];
+    }
+
+    function createMealsSection(
+        e: Entity,
+        meals: Meal[],
+        counts: { plant: number; prey: number; carrion: number },
+        kin: number,
+    ): HTMLElement[] {
         const mealTitle = document.createElement("div");
         mealTitle.className = "insp-mem-title";
         mealTitle.textContent = `進食 · 最近 ${meals.length} 條 `;
@@ -186,46 +190,59 @@ export function createInspector(container: HTMLElement): EntityInspector {
         }
         mealTitle.appendChild(mealSum);
 
-        let mealsEl: HTMLElement;
         if (meals.length === 0) {
-            mealsEl = document.createElement("div");
-            mealsEl.className = "insp-mem-empty";
-            mealsEl.textContent = "尚未進食";
-        } else {
-            mealsEl = document.createElement("div");
-            mealsEl.className = "insp-mem insp-meals";
-            const mealsHead = document.createElement("div");
-            mealsHead.className = "insp-mem-head";
-            ["來源", "能量", "世代", "多久前"].forEach((text) => {
-                const sp = document.createElement("span");
-                sp.textContent = text;
-                mealsHead.appendChild(sp);
-            });
-            mealsEl.appendChild(mealsHead);
-            for (const mealItem of meals) {
-                const mealRow = document.createElement("div");
-                mealRow.className = `insp-mem-row${mealItem.kin ? " kin" : ""}`;
-                if (mealItem.kin) {
-                    mealRow.title = `近親取食 · 相差 ${mealItem.kinGeneration} 代`;
-                }
-                const srcI = document.createElement("i");
-                srcI.className = `meal-src ${mealItem.source}`;
-                srcI.textContent = mealItem.kin
-                    ? KIN_LABEL[mealItem.kinRelation ?? "ancestor"]
-                    : MEAL_LABEL[mealItem.source];
-                const engB = document.createElement("b");
-                engB.textContent = `+${mealItem.energy.toFixed(0)}`;
-                const genSpan = document.createElement("span");
-                genSpan.textContent =
-                    mealItem.victimGeneration === undefined ? "—" : `G${mealItem.victimGeneration}`;
-                const agoEm = document.createElement("em");
-                agoEm.textContent = `${e.age - mealItem.age}t`;
-                mealRow.append(srcI, engB, genSpan, agoEm);
-                mealsEl.appendChild(mealRow);
-            }
+            const emptyEl = document.createElement("div");
+            emptyEl.className = "insp-mem-empty";
+            emptyEl.textContent = "尚未進食";
+            return [mealTitle, emptyEl];
         }
 
-        card.append(head, rowsEl, memTitle, memEl, mealTitle, mealsEl);
+        const mealsEl = document.createElement("div");
+        mealsEl.className = "insp-mem insp-meals";
+        const mealsHead = document.createElement("div");
+        mealsHead.className = "insp-mem-head";
+        ["來源", "能量", "世代", "多久前"].forEach((text) => {
+            const sp = document.createElement("span");
+            sp.textContent = text;
+            mealsHead.appendChild(sp);
+        });
+        mealsEl.appendChild(mealsHead);
+        for (const mealItem of meals) {
+            const mealRow = document.createElement("div");
+            mealRow.className = `insp-mem-row${mealItem.kin ? " kin" : ""}`;
+            if (mealItem.kin) {
+                mealRow.title = `近親取食 · 相差 ${mealItem.kinGeneration} 代`;
+            }
+            const srcI = document.createElement("i");
+            srcI.className = `meal-src ${mealItem.source}`;
+            srcI.textContent = mealItem.kin
+                ? KIN_LABEL[mealItem.kinRelation ?? "ancestor"]
+                : MEAL_LABEL[mealItem.source];
+            const engB = document.createElement("b");
+            engB.textContent = `+${mealItem.energy.toFixed(0)}`;
+            const genSpan = document.createElement("span");
+            genSpan.textContent =
+                mealItem.victimGeneration === undefined ? "—" : `G${mealItem.victimGeneration}`;
+            const agoEm = document.createElement("em");
+            agoEm.textContent = `${e.age - mealItem.age}t`;
+            mealRow.append(srcI, engB, genSpan, agoEm);
+            mealsEl.appendChild(mealRow);
+        }
+        return [mealTitle, mealsEl];
+    }
+
+    function render(e: Entity, frozenNow: boolean, rows: MemoryRow[], meals: Meal[]): void {
+        const kindName = e.species.kind === "herbivore" ? "草食" : "肉食";
+        const counts = e.meals.counts();
+        const kin = e.meals.kinCount();
+
+        card.textContent = "";
+        card.append(
+            createInspectorHead(e, kindName, () => cardOwner().hide()),
+            createInspectorRows(e, frozenNow),
+            ...createMemorySection(rows),
+            ...createMealsSection(e, meals, counts, kin),
+        );
     }
 
     /**
