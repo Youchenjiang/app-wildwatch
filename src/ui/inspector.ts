@@ -73,80 +73,176 @@ export function createInspector(container: HTMLElement): EntityInspector {
         }));
     }
 
-    function render(e: Entity, frozenNow: boolean, rows: MemoryRow[], meals: Meal[]): void {
+    function createInspectorHead(e: Entity, kindName: string, onClose: () => void): HTMLElement {
+        const head = document.createElement("div");
+        head.className = "insp-head";
+        const dot = document.createElement("span");
+        dot.className = `dot ${e.species.kind === "herbivore" ? "herb" : "carn"}`;
+        const titleSpan = document.createElement("span");
+        titleSpan.textContent = `${kindName} #${e.id}`;
+        const closeBtn = document.createElement("button");
+        closeBtn.id = "insp-close";
+        closeBtn.title = "關閉";
+        closeBtn.textContent = "✕";
+        closeBtn.addEventListener("click", onClose);
+        head.append(dot, titleSpan, closeBtn);
+        return head;
+    }
+
+    function createInspectorRows(e: Entity, frozenNow: boolean): HTMLElement {
         const s = e.species;
-        const kindName = s.kind === "herbivore" ? "草食" : "肉食";
+        const rowsEl = document.createElement("div");
+        rowsEl.className = "insp-rows";
+        const addRow = (label: string, val: string) => {
+            const rowDiv = document.createElement("div");
+            const lblSpan = document.createElement("span");
+            lblSpan.textContent = label;
+            const valB = document.createElement("b");
+            valB.textContent = val;
+            rowDiv.append(lblSpan, valB);
+            rowsEl.appendChild(rowDiv);
+        };
+        addRow("能量", `${e.energy.toFixed(1)} / ${s.maxEnergy}`);
+        addRow("年齡", `${e.age} / ${s.maxAge} ticks`);
+        addRow("世代", `${e.generation}`);
+        addRow("進食次數", `${e.foodEaten}`);
+        addRow("適應度", `${e.fitness.toFixed(0)}`);
+        addRow("繁殖冷卻", `${e.reproduceCooldown} ticks`);
+        addRow("速度上限", `${s.speed}`);
+        addRow("感應範圍", `${s.senseRange}`);
+        addRow("記憶片段", `${e.memory.size()}`);
+        if (e.isJuvenile) {
+            const juvDiv = document.createElement("div");
+            const lblSpan = document.createElement("span");
+            lblSpan.textContent = "狀態";
+            const juvB = document.createElement("b");
+            juvB.style.color = "#64b5f6";
+            juvB.textContent = `幼獸（緊隨母體 #${e.motherId}）`;
+            juvDiv.append(lblSpan, juvB);
+            rowsEl.appendChild(juvDiv);
+        }
+        if (frozenNow) {
+            const frozenDiv = document.createElement("div");
+            frozenDiv.className = "insp-frozen";
+            frozenDiv.textContent = "☠ 個體已死亡（或重播檢視）— 顯示最後快照";
+            rowsEl.appendChild(frozenDiv);
+        }
+        return rowsEl;
+    }
+
+    function createMemorySection(rows: MemoryRow[]): HTMLElement[] {
+        const memTitle = document.createElement("div");
+        memTitle.className = "insp-mem-title";
+        memTitle.textContent = `記憶 · 最近 ${rows.length} 條`;
+
+        if (rows.length === 0) {
+            const emptyEl = document.createElement("div");
+            emptyEl.className = "insp-mem-empty";
+            emptyEl.textContent = "尚無記憶 — 還沒吃過東西";
+            return [memTitle, emptyEl];
+        }
+
+        const memEl = document.createElement("div");
+        memEl.className = "insp-mem";
+        const memHead = document.createElement("div");
+        memHead.className = "insp-mem-head";
+        ["相似", "轉向", "獎勵", "多久前"].forEach((text) => {
+            const sp = document.createElement("span");
+            sp.textContent = text;
+            memHead.appendChild(sp);
+        });
+        memEl.appendChild(memHead);
+        for (const r of rows) {
+            const memRow = document.createElement("div");
+            memRow.className = "insp-mem-row";
+            const simI = document.createElement("i");
+            simI.style.color = simColor(r.similarity);
+            simI.textContent = r.similarity.toFixed(2);
+            const steerSpan = document.createElement("span");
+            steerSpan.textContent = formatSteer(r.actionHint);
+            const rewB = document.createElement("b");
+            rewB.textContent = `+${r.reward.toFixed(0)}`;
+            const agoEm = document.createElement("em");
+            agoEm.textContent = `${r.ago}t`;
+            memRow.append(simI, steerSpan, rewB, agoEm);
+            memEl.appendChild(memRow);
+        }
+        return [memTitle, memEl];
+    }
+
+    function createMealsSection(
+        e: Entity,
+        meals: Meal[],
+        counts: { plant: number; prey: number; carrion: number },
+        kin: number,
+    ): HTMLElement[] {
+        const mealTitle = document.createElement("div");
+        mealTitle.className = "insp-mem-title";
+        mealTitle.textContent = `進食 · 最近 ${meals.length} 條 `;
+        const mealSum = document.createElement("span");
+        mealSum.className = "insp-meal-sum";
+        mealSum.textContent = `植物 ${counts.plant} · 獵物 ${counts.prey} · 屍體 ${counts.carrion}`;
+        if (kin > 0) {
+            const kinB = document.createElement("b");
+            kinB.className = "meal-kin";
+            kinB.textContent = `血親 ${kin}`;
+            mealSum.append(" · ", kinB);
+        }
+        mealTitle.appendChild(mealSum);
+
+        if (meals.length === 0) {
+            const emptyEl = document.createElement("div");
+            emptyEl.className = "insp-mem-empty";
+            emptyEl.textContent = "尚未進食";
+            return [mealTitle, emptyEl];
+        }
+
+        const mealsEl = document.createElement("div");
+        mealsEl.className = "insp-mem insp-meals";
+        const mealsHead = document.createElement("div");
+        mealsHead.className = "insp-mem-head";
+        ["來源", "能量", "世代", "多久前"].forEach((text) => {
+            const sp = document.createElement("span");
+            sp.textContent = text;
+            mealsHead.appendChild(sp);
+        });
+        mealsEl.appendChild(mealsHead);
+        for (const mealItem of meals) {
+            const mealRow = document.createElement("div");
+            mealRow.className = `insp-mem-row${mealItem.kin ? " kin" : ""}`;
+            if (mealItem.kin) {
+                mealRow.title = `近親取食 · 相差 ${mealItem.kinGeneration} 代`;
+            }
+            const srcI = document.createElement("i");
+            srcI.className = `meal-src ${mealItem.source}`;
+            srcI.textContent = mealItem.kin
+                ? KIN_LABEL[mealItem.kinRelation ?? "ancestor"]
+                : MEAL_LABEL[mealItem.source];
+            const engB = document.createElement("b");
+            engB.textContent = `+${mealItem.energy.toFixed(0)}`;
+            const genSpan = document.createElement("span");
+            genSpan.textContent =
+                mealItem.victimGeneration === undefined ? "—" : `G${mealItem.victimGeneration}`;
+            const agoEm = document.createElement("em");
+            agoEm.textContent = `${e.age - mealItem.age}t`;
+            mealRow.append(srcI, engB, genSpan, agoEm);
+            mealsEl.appendChild(mealRow);
+        }
+        return [mealTitle, mealsEl];
+    }
+
+    function render(e: Entity, frozenNow: boolean, rows: MemoryRow[], meals: Meal[]): void {
+        const kindName = e.species.kind === "herbivore" ? "草食" : "肉食";
         const counts = e.meals.counts();
         const kin = e.meals.kinCount();
-        card.innerHTML = `
-            <div class="insp-head">
-                <span class="dot ${s.kind === "herbivore" ? "herb" : "carn"}"></span>
-                <span>${kindName} #${e.id}</span>
-                <button id="insp-close" title="關閉">✕</button>
-            </div>
-            <div class="insp-rows">
-                <div><span>能量</span><b>${e.energy.toFixed(1)} / ${s.maxEnergy}</b></div>
-                <div><span>年齡</span><b>${e.age} / ${s.maxAge} ticks</b></div>
-                <div><span>世代</span><b>${e.generation}</b></div>
-                <div><span>進食次數</span><b>${e.foodEaten}</b></div>
-                <div><span>適應度</span><b>${e.fitness.toFixed(0)}</b></div>
-                <div><span>繁殖冷卻</span><b>${e.reproduceCooldown} ticks</b></div>
-                <div><span>速度上限</span><b>${s.speed}</b></div>
-                <div><span>感應範圍</span><b>${s.senseRange}</b></div>
-                <div><span>記憶片段</span><b>${e.memory.size()}</b></div>
-                ${frozenNow ? `<div class="insp-frozen">☠ 個體已死亡（或重播檢視）— 顯示最後快照</div>` : ""}
-            </div>
-            <div class="insp-mem-title">記憶 · 最近 ${rows.length} 條</div>
-            ${
-                rows.length === 0
-                    ? '<div class="insp-mem-empty">尚無記憶 — 還沒吃過東西</div>'
-                    : `<div class="insp-mem">
-                        <div class="insp-mem-head"><span>相似</span><span>轉向</span><span>獎勵</span><span>多久前</span></div>
-                        ${rows
-                            .map(
-                                (r) => `
-                        <div class="insp-mem-row">
-                            <i style="color:${simColor(r.similarity)}">${r.similarity.toFixed(2)}</i>
-                            <span>${formatSteer(r.actionHint)}</span>
-                            <b>+${r.reward.toFixed(0)}</b>
-                            <em>${r.ago}t</em>
-                        </div>`,
-                            )
-                            .join("")}
-                    </div>`
-            }
-            <div class="insp-mem-title">
-                進食 · 最近 ${meals.length} 條
-                <span class="insp-meal-sum">植物 ${counts.plant} · 獵物 ${counts.prey} · 屍體 ${counts.carrion}${
-                    kin > 0 ? ` · <b class="meal-kin">血親 ${kin}</b>` : ""
-                }</span>
-            </div>
-            ${
-                meals.length === 0
-                    ? '<div class="insp-mem-empty">尚未進食</div>'
-                    : `<div class="insp-mem insp-meals">
-                        <div class="insp-mem-head"><span>來源</span><span>能量</span><span>世代</span><span>多久前</span></div>
-                        ${meals
-                            .map(
-                                (mealItem) => `
-                        <div class="insp-mem-row${mealItem.kin ? " kin" : ""}"${
-                            mealItem.kin
-                                ? ` title="近親取食 · 相差 ${mealItem.kinGeneration} 代"`
-                                : ""
-                        }>
-                            <i class="meal-src ${mealItem.source}">${
-                                mealItem.kin ? KIN_LABEL[mealItem.kinRelation ?? "ancestor"] : MEAL_LABEL[mealItem.source]
-                            }</i>
-                            <b>+${mealItem.energy.toFixed(0)}</b>
-                            <span>${mealItem.victimGeneration === undefined ? "—" : `G${mealItem.victimGeneration}`}</span>
-                            <em>${e.age - mealItem.age}t</em>
-                        </div>`,
-                            )
-                            .join("")}
-                    </div>`
-            }
-        `;
-        card.querySelector("#insp-close")?.addEventListener("click", () => cardOwner().hide());
+
+        card.textContent = "";
+        card.append(
+            createInspectorHead(e, kindName, () => cardOwner().hide()),
+            createInspectorRows(e, frozenNow),
+            ...createMemorySection(rows),
+            ...createMealsSection(e, meals, counts, kin),
+        );
     }
 
     /**

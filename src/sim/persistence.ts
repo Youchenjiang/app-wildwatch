@@ -1,7 +1,7 @@
 import { Brain } from "./brain";
 import { DEFAULT_BRAIN_SPEC } from "./world";
 import { gaussian, mulberry32 } from "./rng";
-import type { GodMemory, SacredSeed } from "./types";
+import type { GodMemory, GodPolicy, SacredSeed } from "./types";
 
 /** Convert a serialized SacredSeed into a live, runnable Brain instance. */
 export function sacredSeedToBrain(seed: SacredSeed): Brain {
@@ -61,7 +61,7 @@ export function createDefaultGodMemory(): GodMemory {
             blightPredatorThreshold: 75,
             interventionCooldown: 1000,
             socialTendency: 0.5,
-        },
+        } satisfies GodPolicy,
     };
 }
 

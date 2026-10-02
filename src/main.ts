@@ -38,7 +38,15 @@ const founderGenomes = {
     carnivore: sacredSeedToBrain(godMemory.sacredSeeds.carnivore),
 };
 
-let world = new World({ ...makeSeeding(), founderGenomes });
+let world = new World({
+    ...makeSeeding(),
+    founderGenomes,
+    enableGodAgent: true,
+    godMemory,
+    socialMode: "pack",
+    socialCohesion: 0.8,
+    juvenileDuration: 200,
+});
 let ctx: RenderContext = createRenderContext(
     container,
     world.config.width,
@@ -145,9 +153,18 @@ ctx.renderer.domElement.addEventListener("pointerup", (event) => {
 function restart(): void {
     // Both seeding choices are locked into the run here, never consulted again
     // (rule 2: nothing about a run changes after it is seeded).
+    const currentFounderGenomes = {
+        herbivore: sacredSeedToBrain(godMemory.sacredSeeds.herbivore),
+        carnivore: sacredSeedToBrain(godMemory.sacredSeeds.carnivore),
+    };
     world = new World({
         ...makeSeeding(undefined, selectedEra, selectedReproduction),
-        founderGenomes,
+        founderGenomes: currentFounderGenomes,
+        enableGodAgent: true,
+        godMemory,
+        socialMode: "pack",
+        socialCohesion: 0.8,
+        juvenileDuration: 200,
     });
     ctx.atmosphere.setColors(eraAtmosphereColors(world.config.era));
 

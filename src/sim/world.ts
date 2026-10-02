@@ -9,6 +9,7 @@ import { createMealLog } from "./meals";
 import { createLineage } from "./lineage";
 import { LifeGrid } from "./learning";
 import { SocialSignalGrid } from "./social";
+import { GodAgent } from "./god";
 import { overlaySpecies, overlayPlants } from "./era";
 
 export const DEFAULT_BRAIN_SPEC: BrainSpec = {
@@ -255,6 +256,10 @@ export interface WorldConfig {
         herbivore?: import("./brain").Brain;
         carnivore?: import("./brain").Brain;
     };
+    /** Whether the transcendent GodAgent monitors and regulates the ecosystem. */
+    enableGodAgent?: boolean;
+    /** Initial or persistent GodMemory to seed the GodAgent with. */
+    godMemory?: import("./types").GodMemory;
 }
 
 interface Sense {
@@ -329,6 +334,7 @@ export class World {
     private readonly carrionGrid = new SpatialGrid<Carrion>(10, (carrion) => carrion);
     readonly lifeGrid: LifeGrid;
     readonly socialGrid: SocialSignalGrid;
+    readonly godAgent?: GodAgent;
     /** Era-resolved plant numbers in force this run (see `PlantParams`). */
     readonly plantParams: PlantParams;
     private nextId = 1;
@@ -361,6 +367,9 @@ export class World {
             config.lifeGridCellsize ?? 6,
         );
         this.socialGrid = new SocialSignalGrid(config.width, config.height);
+        if (config.enableGodAgent) {
+            this.godAgent = new GodAgent(this, config.godMemory);
+        }
         // Era-resolved species/plant params: an era can override any species
         // tuning knob or plant throughput. Absent era == base SPECIES params
         // passed through by reference (so mutable-Global tests still work).
@@ -463,7 +472,8 @@ export class World {
         return count;
     }
 
-    private spawnPlant(): void {
+    /** Spawn a new plant into the world and spatial index. */
+    spawnPlant(): void {
         const spot = this.plantPosition();
         const plant: Plant = {
             id: this.nextId++,
@@ -615,6 +625,9 @@ export class World {
         }
 
         this.recordPopulationDensity();
+        if (this.godAgent) {
+            this.godAgent.tick();
+        }
         this.checkExtinction();
         this.sweepTheDead();
         this.decayCarrion();
@@ -1241,6 +1254,10 @@ export class World {
             }
         }
         return best;
+    }
+    /** Kill an entity externally (e.g. divine intervention), preserving carrion and death records. */
+    cullEntity(e: Entity, reason: string): void {
+        this.kill(e, reason);
     }
 
     private kill(e: Entity, reason: string): void {
