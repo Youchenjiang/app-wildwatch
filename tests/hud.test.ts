@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createHud, depthScale, formatGodInfo, gameOverVeil, kinStatText, updateStateBanner } from "../src/ui/hud";
+import { depthScale, formatGodInfo, gameOverVeil, kinStatText, updateStateBanner } from "../src/ui/hud";
 import { World, type TurnRecord } from "../src/sim/world";
 import { makeSeeding } from "../src/sim/seeding";
 

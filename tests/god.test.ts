@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { World } from "../src/sim/world";
 import { makeSeeding } from "../src/sim/seeding";
-import { GodAgent } from "../src/sim/god";
 
 describe("God Agent & Ecosystem Oversight", () => {
     it("triggers bountifulRain when herbivores fall below emergency threshold", () => {

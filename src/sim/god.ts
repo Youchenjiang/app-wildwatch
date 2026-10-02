@@ -127,10 +127,10 @@ export class GodAgent {
 
     private static serializeBrain(brain: Brain): SerializedBrainWeights {
         return {
-            w1: Array.from(brain.w1).map((v) => +v.toFixed(5)),
-            b1: Array.from(brain.b1).map((v) => +v.toFixed(5)),
-            w2: Array.from(brain.w2).map((v) => +v.toFixed(5)),
-            b2: Array.from(brain.b2).map((v) => +v.toFixed(5)),
+            w1: Array.from(brain.w1).map((weight) => Number(weight.toFixed(5))),
+            b1: Array.from(brain.b1).map((weight) => Number(weight.toFixed(5))),
+            w2: Array.from(brain.w2).map((weight) => Number(weight.toFixed(5))),
+            b2: Array.from(brain.b2).map((weight) => Number(weight.toFixed(5))),
         };
     }
 

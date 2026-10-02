@@ -400,10 +400,10 @@ export function createHud(container: HTMLElement): Hud {
         const mem = activeWorld.godAgent.exportMemory();
         const blob = new Blob([JSON.stringify(mem, null, 2)], { type: "application/json" });
         const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `god-memory-${Date.now()}.json`;
-        a.click();
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = `god-memory-${Date.now()}.json`;
+        anchor.click();
         URL.revokeObjectURL(url);
     });
 
