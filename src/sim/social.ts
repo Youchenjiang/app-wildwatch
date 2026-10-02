@@ -68,11 +68,11 @@ export class SocialSignalGrid {
                     const cellCenterY = (cy + 0.5) * this.cellsize;
                     const dx = cellCenterX - x;
                     const dy = cellCenterY - y;
-                    const d = Math.hypot(dx, dy);
-                    if (d <= radius && d > 0.1) {
+                    const dist = Math.hypot(dx, dy);
+                    if (dist <= radius && dist > 0.1) {
                         maxVal = val;
-                        bestDX = dx / d;
-                        bestDY = dy / d;
+                        bestDX = dx / dist;
+                        bestDY = dy / dist;
                     }
                 }
             }
