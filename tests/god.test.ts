@@ -16,12 +16,13 @@ describe("God Agent & Ecosystem Oversight", () => {
         const plantCountBefore = world.plants.length;
 
         // Force god agent evaluation by advancing to eval interval
-        world.godAgent!.evalInterval = 1;
+        if (!world.godAgent) throw new Error("GodAgent not initialized");
+        world.godAgent.evalInterval = 1;
         world.tickStep();
 
         expect(world.plants.length).toBeGreaterThan(plantCountBefore);
-        expect(world.godAgent!.history.length).toBeGreaterThan(0);
-        expect(world.godAgent!.history[0].action).toBe("bountifulRain");
+        expect(world.godAgent.history.length).toBeGreaterThan(0);
+        expect(world.godAgent.history[0].action).toBe("bountifulRain");
     });
 
     it("triggers metabolicBlight when carnivores explode above threshold", () => {
@@ -33,14 +34,15 @@ describe("God Agent & Ecosystem Oversight", () => {
             enableGodAgent: true,
         };
         const world = new World(config);
-        world.godAgent!.evalInterval = 1;
+        if (!world.godAgent) throw new Error("GodAgent not initialized");
+        world.godAgent.evalInterval = 1;
 
         const carnCountBefore = world.populationOf("carnivore");
         world.tickStep();
 
         const carnCountAfter = world.populationOf("carnivore");
         expect(carnCountAfter).toBeLessThan(carnCountBefore);
-        expect(world.godAgent!.history.some((h) => h.action === "metabolicBlight")).toBe(true);
+        expect(world.godAgent.history.some((h) => h.action === "metabolicBlight")).toBe(true);
     });
 
     it("archives champion genomes as sacred seeds and exports valid GodMemory", () => {
@@ -51,10 +53,12 @@ describe("God Agent & Ecosystem Oversight", () => {
             enableGodAgent: true,
         };
         const world = new World(config);
-        const god = world.godAgent!;
+        const god = world.godAgent;
+        if (!god) throw new Error("GodAgent not initialized");
 
         // Give one herbivore high fitness
-        const starHerb = world.entities.find((e) => e.species.kind === "herbivore")!;
+        const starHerb = world.entities.find((e) => e.species.kind === "herbivore");
+        if (!starHerb) throw new Error("Herbivore not found");
         starHerb.fitness = 99999;
 
         god.harvestSacredSeeds();
