@@ -1,5 +1,5 @@
 import type { World } from "./world";
-import type { GodMemory, GodPolicy, SacredSeed, SerializedBrainWeights, SpeciesKind } from "./types";
+import type { GodMemory, SerializedBrainWeights, SpeciesKind } from "./types";
 import { createDefaultGodMemory } from "./persistence";
 import { Brain } from "./brain";
 
@@ -97,8 +97,8 @@ export class GodAgent {
             .sort((a, b) => a.energy - b.energy);
 
         const cullCount = Math.min(carns.length - 4, Math.ceil(carns.length * 0.25));
-        for (let i = 0; i < cullCount; i++) {
-            carns[i].alive = false;
+        for (const carn of carns.slice(0, cullCount)) {
+            carn.alive = false;
         }
     }
 
@@ -109,12 +109,7 @@ export class GodAgent {
             const pool = this.world.entities.filter((e) => e.alive && e.species.kind === kind);
             if (pool.length === 0) continue;
 
-            let champion = pool[0];
-            for (let i = 1; i < pool.length; i++) {
-                if (pool[i].fitness > champion.fitness) {
-                    champion = pool[i];
-                }
-            }
+            const champion = pool.reduce((best, e) => (e.fitness > best.fitness ? e : best), pool[0]);
 
             const currentSeed = this.memory.sacredSeeds[kind];
             if (!currentSeed || champion.fitness > currentSeed.fitness) {
@@ -122,7 +117,7 @@ export class GodAgent {
                     species: kind,
                     fitness: Math.round(champion.fitness),
                     spec: champion.brain.spec,
-                    weights: this.serializeBrain(champion.brain),
+                    weights: GodAgent.serializeBrain(champion.brain),
                 };
             }
         }
@@ -130,7 +125,7 @@ export class GodAgent {
         this.memory.eons = (this.memory.eons || 1) + 1;
     }
 
-    private serializeBrain(brain: Brain): SerializedBrainWeights {
+    private static serializeBrain(brain: Brain): SerializedBrainWeights {
         return {
             w1: Array.from(brain.w1).map((v) => +v.toFixed(5)),
             b1: Array.from(brain.b1).map((v) => +v.toFixed(5)),
