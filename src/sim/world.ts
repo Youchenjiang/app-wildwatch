@@ -773,9 +773,7 @@ export class World {
         const dy = mother.pos.y - e.pos.y;
         if (Math.hypot(dx, dy) <= 2.5) return { steer, thrust };
         const targetAngle = Math.atan2(dy, dx);
-        let angleDiff = targetAngle - e.angle;
-        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+        const angleDiff = Math.atan2(Math.sin(targetAngle - e.angle), Math.cos(targetAngle - e.angle));
         return { steer: steer * 0.3 + Math.sign(angleDiff) * 0.7, thrust: Math.max(thrust, 0.75) };
     }
 
@@ -794,39 +792,58 @@ export class World {
         if (cohesion <= 0) return { steer, thrust };
 
         if (s.kind === "herbivore") {
-            const threat = this.nearestThreat(e);
-            if (threat && Math.sqrt(threat.d2) < s.senseRange * 0.5) {
-                this.socialGrid.emitAlarm(e.pos.x, e.pos.y, cohesion);
-            }
-            const alarm = this.socialGrid.queryAlarm(e.pos.x, e.pos.y);
-            if (alarm && (!threat || Math.sqrt(threat.d2) > 8)) {
-                const fleeAngle = Math.atan2(-alarm.dy, -alarm.dx);
-                let angleDiff = fleeAngle - e.angle;
-                while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-                while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-                const blend = 0.6 * cohesion;
-                return {
-                    steer: steer * (1 - blend) + Math.sign(angleDiff) * blend,
-                    thrust: Math.max(thrust, 0.5 + 0.3 * cohesion),
-                };
-            }
-        } else if (s.kind === "carnivore") {
-            if (!sense || sense.dist > 15) {
-                const scent = this.socialGrid.queryScent(e.pos.x, e.pos.y);
-                if (scent) {
-                    const huntAngle = Math.atan2(scent.dy, scent.dx);
-                    let angleDiff = huntAngle - e.angle;
-                    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-                    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
-                    const blend = 0.5 * cohesion;
-                    return {
-                        steer: steer * (1 - blend) + Math.sign(angleDiff) * blend,
-                        thrust: Math.max(thrust, 0.5 + 0.2 * cohesion),
-                    };
-                }
-            }
+            return this.applyHerbivoreAlarmSteering(e, s, cohesion, steer, thrust);
+        }
+        if (s.kind === "carnivore") {
+            return this.applyCarnivoreScentSteering(e, sense, cohesion, steer, thrust);
         }
         return { steer, thrust };
+    }
+
+    private applyHerbivoreAlarmSteering(
+        e: Entity,
+        s: SpeciesParams,
+        cohesion: number,
+        steer: number,
+        thrust: number,
+    ): { steer: number; thrust: number } {
+        const threat = this.nearestThreat(e);
+        if (threat && Math.sqrt(threat.d2) < s.senseRange * 0.5) {
+            this.socialGrid.emitAlarm(e.pos.x, e.pos.y, cohesion);
+        }
+        const alarm = this.socialGrid.queryAlarm(e.pos.x, e.pos.y);
+        if (!alarm || (threat && Math.sqrt(threat.d2) <= 8)) {
+            return { steer, thrust };
+        }
+        const fleeAngle = Math.atan2(-alarm.dy, -alarm.dx);
+        const angleDiff = Math.atan2(Math.sin(fleeAngle - e.angle), Math.cos(fleeAngle - e.angle));
+        const blend = 0.6 * cohesion;
+        return {
+            steer: steer * (1 - blend) + Math.sign(angleDiff) * blend,
+            thrust: Math.max(thrust, 0.5 + 0.3 * cohesion),
+        };
+    }
+
+    private applyCarnivoreScentSteering(
+        e: Entity,
+        sense: Sense | null,
+        cohesion: number,
+        steer: number,
+        thrust: number,
+    ): { steer: number; thrust: number } {
+        if (sense && sense.dist <= 15) {
+            return { steer, thrust };
+        }
+        const scent = this.socialGrid.queryScent(e.pos.x, e.pos.y);
+        if (!scent) return { steer, thrust };
+
+        const huntAngle = Math.atan2(scent.dy, scent.dx);
+        const angleDiff = Math.atan2(Math.sin(huntAngle - e.angle), Math.cos(huntAngle - e.angle));
+        const blend = 0.5 * cohesion;
+        return {
+            steer: steer * (1 - blend) + Math.sign(angleDiff) * blend,
+            thrust: Math.max(thrust, 0.5 + 0.2 * cohesion),
+        };
     }
 
     // ---------------------------------------------------------------------
