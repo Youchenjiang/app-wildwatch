@@ -93,6 +93,10 @@ export const POLICY = {
     // Body must contain a numbered list in English starting at "1. " or "1)".
     numberedListPattern: /^\s{0,3}1[.)]\s+/m,
   },
+  prBody: {
+    requiredSections: ["## Summary", "## Key Changes", "## Verification", "## Notes"],
+    templatePath: ".github/pull_request_template.md",
+  },
 };
 
 export function describeFormat() {
@@ -248,6 +252,71 @@ export function validateCommitMessage(message) {
   return errors;
 }
 
+export function validatePullRequestBody(bodyText) {
+  const errors = [];
+  const text = String(bodyText ?? "").replaceAll("\r\n", "\n").trim();
+
+  if (!text) {
+    errors.push("PR body is empty. PR description must follow .github/pull_request_template.md.");
+    return errors;
+  }
+
+  // Required sections according to .github/pull_request_template.md and docs/engineering/commit-policy.md
+  const requiredSections = [
+    { title: "## Summary", pattern: /^##\s+Summary\b/m },
+    { title: "## Key Changes", pattern: /^##\s+Key Changes\b/m },
+    { title: "## Verification", pattern: /^##\s+Verification\b/m },
+    { title: "## Notes", pattern: /^##\s+Notes\b/m },
+  ];
+
+  for (const { title, pattern } of requiredSections) {
+    if (!pattern.test(text)) {
+      errors.push(`PR body is missing required section: "${title}".`);
+    }
+  }
+
+  // Verification section must contain valid checklist items with backtick code spans
+  const verificationRegex = /##\s+Verification\b([\s\S]*?)(?=##\s+Notes\b|$)/;
+  const verificationMatch = verificationRegex.exec(text);
+  if (!verificationMatch) {
+    errors.push('PR body must contain a "## Verification" section before "## Notes".');
+  } else {
+    const verificationContent = verificationMatch[1].trim();
+    const checklistItems = verificationContent
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.startsWith("- ["));
+
+    if (checklistItems.length === 0) {
+      errors.push('PR body "## Verification" section must contain checklist items (e.g. "- [x] ...").');
+    }
+
+    for (const item of checklistItems) {
+      if (!/^-\s+\[[ xX]\]\s+.+/.test(item)) {
+        errors.push(`Invalid checklist item format: "${item}".`);
+      }
+    }
+  }
+
+  // Detect corrupted backticks / escaped command artifacts (e.g., \npm run build\, \world.setReproductionMode()\, \path/to/file\)
+  // Any non-empty span enclosed in backslashes containing identifier/code characters is invalid.
+  const escapedArtifactPattern = /\\([a-zA-Z0-9_./#:@<>()'" -]+)\\/;
+  const artifactMatch = escapedArtifactPattern.exec(text);
+  if (artifactMatch) {
+    errors.push(
+      `PR body contains corrupted escaped inline code artifacts ("${artifactMatch[0]}" instead of \`${artifactMatch[1]}\`). Use backticks for code, paths, and identifiers.`,
+    );
+  }
+
+  // Check for unmatched backticks across the entire PR body
+  const backtickCount = (text.match(/`/g) || []).length;
+  if (backtickCount % 2 !== 0) {
+    errors.push(`PR body has an unmatched backtick (total backticks: ${backtickCount}). Ensure all code spans are closed.`);
+  }
+
+  return errors;
+}
+
 function runSelfTest() {
   const failures = [];
   const check = (label, errors, expectErrors) => {
@@ -293,6 +362,47 @@ function runSelfTest() {
     false,
   );
 
+  check(
+    "valid pr body",
+    validatePullRequestBody("## Summary\n\nFix issue.\n\n## Key Changes\n\n1. Change code.\n\n## Verification\n\n- [x] `npm test` passes\n\n## Notes\n\nNo notes.\n"),
+    false,
+  );
+  check(
+    "pr body missing notes",
+    validatePullRequestBody("## Summary\n\nFix issue.\n\n## Key Changes\n\n1. Change code.\n\n## Verification\n\n- [x] `npm test` passes\n"),
+    true,
+  );
+  check(
+    "pr body missing verification",
+    validatePullRequestBody("## Summary\n\nFix issue.\n\n## Key Changes\n\n1. Change code.\n\n## Notes\n\nNo notes.\n"),
+    true,
+  );
+  check(
+    "pr body corrupted escaped artifact",
+    validatePullRequestBody("## Summary\n\nFix issue.\n\n## Key Changes\n\n1. Run \\npm run build\\.\n\n## Verification\n\n- [x] `npm test` passes\n\n## Notes\n\nNone.\n"),
+    true,
+  );
+  check(
+    "pr body corrupted identifier artifact",
+    validatePullRequestBody("## Summary\n\nFix issue.\n\n## Key Changes\n\n1. Call \\world.setReproductionMode()\\.\n\n## Verification\n\n- [x] `npm test` passes\n\n## Notes\n\nNone.\n"),
+    true,
+  );
+  check(
+    "pr body corrupted parameter artifact",
+    validatePullRequestBody("## Summary\n\nFix issue.\n\n## Key Changes\n\n1. Property \\intervened: boolean\\.\n\n## Verification\n\n- [x] `npm test` passes\n\n## Notes\n\nNone.\n"),
+    true,
+  );
+  check(
+    "pr body unmatched backticks",
+    validatePullRequestBody("## Summary\n\nFix issue.\n\n## Key Changes\n\n1. Run `npm test.\n\n## Verification\n\n- [x] `npm test` passes\n\n## Notes\n\nNone.\n"),
+    true,
+  );
+  check(
+    "pr body empty",
+    validatePullRequestBody(""),
+    true,
+  );
+
   return failures;
 }
 
@@ -302,6 +412,8 @@ function printUsage() {
       "Usage:",
       "  node scripts/commit-policy.mjs subject <text>       validate one subject (PR title or commit subject)",
       "  node scripts/commit-policy.mjs message [file]       validate a full commit message (file path or stdin)",
+      "  node scripts/commit-policy.mjs pr-body [file]       validate a PR description body (file path or stdin)",
+      "  node scripts/commit-policy.mjs template             print the pull request body template",
       "  node scripts/commit-policy.mjs list                 print the current policy",
       "  node scripts/commit-policy.mjs self-test            run built-in checks and exit non-zero on failure",
       "  node scripts/commit-policy.mjs suggest-scope [--json] [path…]  hint at the scope for staged files (or given paths)",
@@ -388,13 +500,31 @@ function main() {
       finish(validateCommitMessage(text));
       break;
     }
+    case "pr-body": {
+      const text = arg ? readFileSync(arg, "utf8") : readFileSync(0, "utf8");
+      finish(validatePullRequestBody(text));
+      break;
+    }
+    case "template": {
+      try {
+        const template = readFileSync(POLICY.prBody.templatePath, "utf8");
+        process.stdout.write(template);
+        process.exit(0);
+      } catch (err) {
+        console.error(`Failed to read template file: ${err.message}`);
+        process.exit(1);
+      }
+      break;
+    }
     case "list":
-      console.log(
+      process.stdout.write(
         [
           `types: ${POLICY.types.join(", ")}`,
           `scopes: ${POLICY.scopes.join(", ")}`,
           `subjectMaxLength: ${POLICY.subjectMaxLength}`,
           'body: numbered list starting with "1. " or "1)"',
+          `prBodySections: ${POLICY.prBody.requiredSections.join(", ")}`,
+          'prBodyRules: checklist under Verification, no unclosed backticks, no escaped backslash artifacts\n',
         ].join("\n"),
       );
       process.exit(0);

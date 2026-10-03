@@ -152,6 +152,14 @@ export interface TurnRecord {
      * eaten. Kept apart because a run shows a very lopsided split. */
     kinAncestorMeals: number;
     kinDescendantMeals: number;
+    /** Whether the world had experienced runtime human intervention by this turn. */
+    intervened?: boolean;
+}
+
+/** A record of human intervention made during runtime in sandbox mode. */
+export interface InterventionRecord {
+    tick: number;
+    action: string;
 }
 
 export interface WorldConfig {
@@ -325,6 +333,9 @@ export class World {
     plants: Plant[] = [];
     carrions: Carrion[] = [];
     records: TurnRecord[] = [];
+    /** Whether human intervention occurred during this run in sandbox mode. */
+    intervened = false;
+    readonly interventions: InterventionRecord[] = [];
 
     tick = 0;
     turn = 0;
@@ -1432,6 +1443,7 @@ export class World {
             kinMeals: this.kinMeals,
             kinAncestorMeals: this.kinAncestorMeals,
             kinDescendantMeals: this.kinDescendantMeals,
+            intervened: this.intervened,
         };
         this.recordSpeciesMetrics(record);
         this.recordLivingAncestry(record, living);
@@ -1547,5 +1559,46 @@ export class World {
             }
         }
         return count ? sum / count : 0;
+    }
+
+    /**
+     * Mark a human intervention event on this world in sandbox mode.
+     */
+    recordIntervention(action: string): void {
+        this.intervened = true;
+        this.interventions.push({ tick: this.tick, action });
+    }
+
+    /**
+     * Set reproduction mode at runtime in sandbox mode.
+     */
+    setReproductionMode(mode: ReproductionMode): void {
+        const prev = this.config.reproduction ?? "asexual";
+        if (prev === mode) return;
+        this.config.reproduction = mode;
+        this.recordIntervention(`reproduction:${prev}->${mode}`);
+    }
+
+    /**
+     * Adjust plant regrowth rate at runtime in sandbox mode.
+     */
+    setPlantRegrowRate(rate: number): void {
+        const safeRate = Math.max(0, rate);
+        const prev = this.config.plantRegrowPerTick;
+        if (prev === safeRate) return;
+        this.config.plantRegrowPerTick = safeRate;
+        this.plantParams.regrowPerTick = safeRate;
+        this.recordIntervention(`plantRegrow:${prev.toFixed(2)}->${safeRate.toFixed(2)}`);
+    }
+
+    /**
+     * Trigger a spontaneous plant burst in sandbox mode.
+     */
+    spawnPlantBurst(count = 10): void {
+        const safeCount = Math.max(1, count);
+        for (let i = 0; i < safeCount; i++) {
+            this.spawnPlant();
+        }
+        this.recordIntervention(`plantBurst:+${safeCount}`);
     }
 }

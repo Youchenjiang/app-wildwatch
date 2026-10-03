@@ -77,13 +77,19 @@ export interface GameOverVeil {
  * meant pressing R to start over left the previous run's numbers covering the
  * middle of the screen for good.
  */
-export function gameOverVeil(over: SpeciesKind | null, turn: number, tick: number): GameOverVeil {
+export function gameOverVeil(
+    over: SpeciesKind | null,
+    turn: number,
+    tick: number,
+    intervened = false,
+): GameOverVeil {
     if (over === null) return { hidden: true, title: "", sub: "" };
     const name = over === "herbivore" ? "草食" : "肉食";
+    const modeNote = intervened ? " · ⚠️ 人為干預局" : "";
     return {
         hidden: false,
         title: `${name}族群滅絕`,
-        sub: `本次訓練於回合 ${turn} 結束 · 共 ${tick} ticks<br>按 <kbd>R</kbd> 重新投放`,
+        sub: `本次訓練於回合 ${turn} 結束 · 共 ${tick} ticks${modeNote}<br>按 <kbd>R</kbd> 重新投放`,
     };
 }
 
@@ -199,14 +205,14 @@ function updateMetrics(
 }
 
 export function updateStateBanner(
-    world: { gameOver: SpeciesKind | null; turn: number; tick: number },
+    world: { gameOver: SpeciesKind | null; turn: number; tick: number; intervened?: boolean },
     paused: boolean,
     stateEl: Element,
     overEl: HTMLElement,
     overTitleEl: Element,
     overSubEl: Element,
 ): void {
-    const veil = gameOverVeil(world.gameOver, world.turn, world.tick);
+    const veil = gameOverVeil(world.gameOver, world.turn, world.tick, world.intervened);
     overEl.hidden = veil.hidden;
     overEl.style.display = veil.hidden ? "none" : "";
     if (!veil.hidden) {
@@ -267,7 +273,10 @@ export function createHud(container: HTMLElement): Hud {
     el.innerHTML = `
         <div class="hud-head">
             <span class="hud-title">演化觀察者</span>
-            <span class="hud-state" id="hud-state">運行中</span>
+            <div class="hud-badges">
+                <span class="hud-badge natural" id="hud-mode-badge" title="自然演化基準（未經干預）">🍃 自然</span>
+                <span class="hud-state" id="hud-state">運行中</span>
+            </div>
         </div>
         <div class="hud-turn" id="hud-turn">回合 0 · tick 0</div>
 
@@ -355,6 +364,7 @@ export function createHud(container: HTMLElement): Hud {
         return found;
     };
     const stateEl = queryHud("#hud-state");
+    const modeBadgeEl = queryHud<HTMLElement>("#hud-mode-badge");
     const turnEl = queryHud("#hud-turn");
     const popHerbEl = queryHud("#pop-herb");
     const popCarnEl = queryHud("#pop-carn");
@@ -453,6 +463,15 @@ export function createHud(container: HTMLElement): Hud {
             });
             activeWorld = world;
             godInfoEl.textContent = formatGodInfo(world);
+            if (world.intervened) {
+                modeBadgeEl.textContent = `🧪 干預 (${world.interventions.length})`;
+                modeBadgeEl.className = "hud-badge intervened";
+                modeBadgeEl.title = `人為干預局（${world.interventions.length} 次變更）`;
+            } else {
+                modeBadgeEl.textContent = "🍃 自然";
+                modeBadgeEl.className = "hud-badge natural";
+                modeBadgeEl.title = "自然演化基準（未經干預）";
+            }
             updateStateBanner(world, paused, stateEl, overEl, overTitleEl, overSubEl);
 
             const seasonLen = world.config.plantSeasonLength ?? 0;

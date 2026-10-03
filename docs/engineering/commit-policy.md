@@ -16,7 +16,7 @@
 | --- | --- | --- |
 | **本機提示 (Advisory)** | `scripts/hooks/pre-commit` | 於 `git add` 後提示合適的 scope；**不阻擋 Commit** |
 | **本機攔截 (Hard Gate)** | `scripts/hooks/commit-msg` | 每次執行 `git commit` 時即時檢驗；**不符規範則阻擋提交** |
-| **CI 雲端檢查** | `.github/workflows/policy.yml` | 每次發起或更新 PR 時，檢驗 PR 標題與所有 Commit 訊息 |
+| **CI 雲端檢查** | `.github/workflows/policy.yml` | 每次發起或更新 PR 時，檢驗 PR 標題、PR 內文 (PR Body) 與所有 Commit 訊息 |
 
 ---
 
