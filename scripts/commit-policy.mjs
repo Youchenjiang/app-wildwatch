@@ -293,11 +293,13 @@ export function validatePullRequestBody(bodyText) {
     }
   }
 
-  // Detect corrupted backticks / escaped command artifacts (e.g., \npm run build\ or \docs/...)
-  const escapedArtifactPattern = /\\(?:npm|npx|node|git|tests?|docs|src|dist)[^\\\n]*\\/;
+  // Detect corrupted backticks / escaped command artifacts (e.g., \npm run build\, \world.setReproductionMode()\, \path/to/file\)
+  // Any non-empty span enclosed in backslashes containing identifier/code characters is invalid.
+  const escapedArtifactPattern = /\\([a-zA-Z0-9_./#:@<>()'" -]+)\\/;
   if (escapedArtifactPattern.test(text)) {
+    const matched = text.match(escapedArtifactPattern);
     errors.push(
-      "PR body contains corrupted escaped inline code artifacts (e.g. \\command\\ instead of `command`). Use backticks for code and paths.",
+      `PR body contains corrupted escaped inline code artifacts ("${matched[0]}" instead of \`${matched[1]}\`). Use backticks for code, paths, and identifiers.`,
     );
   }
 
@@ -373,6 +375,16 @@ function runSelfTest() {
   check(
     "pr body corrupted escaped artifact",
     validatePullRequestBody("## Summary\n\nFix issue.\n\n## Key Changes\n\n1. Run \\npm run build\\.\n\n## Verification\n\n- [x] `npm test` passes\n\n## Notes\n\nNone.\n"),
+    true,
+  );
+  check(
+    "pr body corrupted identifier artifact",
+    validatePullRequestBody("## Summary\n\nFix issue.\n\n## Key Changes\n\n1. Call \\world.setReproductionMode()\\.\n\n## Verification\n\n- [x] `npm test` passes\n\n## Notes\n\nNone.\n"),
+    true,
+  );
+  check(
+    "pr body corrupted parameter artifact",
+    validatePullRequestBody("## Summary\n\nFix issue.\n\n## Key Changes\n\n1. Property \\intervened: boolean\\.\n\n## Verification\n\n- [x] `npm test` passes\n\n## Notes\n\nNone.\n"),
     true,
   );
   check(
