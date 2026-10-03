@@ -44,6 +44,12 @@ jobs:
               failures.push(`PR title failed policy:\n${(e.stderr || "").trim()}`);
             }
 
+            try {
+              runPolicy(["pr-body"], context.payload.pull_request.body || "");
+            } catch (e) {
+              failures.push(`PR body failed policy:\n${(e.stderr || "").trim()}`);
+            }
+
             const commits = await github.paginate(github.rest.pulls.listCommits, {
               owner: context.repo.owner,
               repo: context.repo.repo,

@@ -248,6 +248,37 @@ export function validateCommitMessage(message) {
   return errors;
 }
 
+export function validatePullRequestBody(bodyText) {
+  const errors = [];
+  const text = String(bodyText ?? "").replaceAll("\r\n", "\n").trim();
+
+  if (!text) {
+    errors.push("PR body is empty. PR description must follow .github/pull_request_template.md.");
+    return errors;
+  }
+
+  // Required sections according to .github/pull_request_template.md
+  const requiredSections = [
+    { title: "## Summary", pattern: /^##\s+Summary\b/m },
+    { title: "## Key Changes", pattern: /^##\s+Key Changes\b/m },
+    { title: "## Verification", pattern: /^##\s+Verification\b/m },
+  ];
+
+  for (const { title, pattern } of requiredSections) {
+    if (!pattern.test(text)) {
+      errors.push(`PR body is missing required section: "${title}".`);
+    }
+  }
+
+  // Verification section must contain checked or unchecked items
+  const verificationPattern = /^##\s+Verification\b[\s\S]*?-\s+\[[ xX]\]/m;
+  if (!verificationPattern.test(text)) {
+    errors.push('PR body "## Verification" section must contain checklist items (e.g. "- [x] ...").');
+  }
+
+  return errors;
+}
+
 function runSelfTest() {
   const failures = [];
   const check = (label, errors, expectErrors) => {
@@ -293,6 +324,22 @@ function runSelfTest() {
     false,
   );
 
+  check(
+    "valid pr body",
+    validatePullRequestBody("## Summary\n\nFix issue.\n\n## Key Changes\n\n1. Change code.\n\n## Verification\n\n- [x] `npm test` passes\n"),
+    false,
+  );
+  check(
+    "pr body missing verification",
+    validatePullRequestBody("## Summary\n\nFix issue.\n\n## Key Changes\n\n1. Change code.\n"),
+    true,
+  );
+  check(
+    "pr body empty",
+    validatePullRequestBody(""),
+    true,
+  );
+
   return failures;
 }
 
@@ -302,6 +349,7 @@ function printUsage() {
       "Usage:",
       "  node scripts/commit-policy.mjs subject <text>       validate one subject (PR title or commit subject)",
       "  node scripts/commit-policy.mjs message [file]       validate a full commit message (file path or stdin)",
+      "  node scripts/commit-policy.mjs pr-body [file]       validate a PR description body (file path or stdin)",
       "  node scripts/commit-policy.mjs list                 print the current policy",
       "  node scripts/commit-policy.mjs self-test            run built-in checks and exit non-zero on failure",
       "  node scripts/commit-policy.mjs suggest-scope [--json] [path…]  hint at the scope for staged files (or given paths)",
@@ -386,6 +434,11 @@ function main() {
     case "message": {
       const text = arg ? readFileSync(arg, "utf8") : readFileSync(0, "utf8");
       finish(validateCommitMessage(text));
+      break;
+    }
+    case "pr-body": {
+      const text = arg ? readFileSync(arg, "utf8") : readFileSync(0, "utf8");
+      finish(validatePullRequestBody(text));
       break;
     }
     case "list":
