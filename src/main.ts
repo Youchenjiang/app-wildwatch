@@ -13,6 +13,7 @@ import { ObserverCamera } from "./render/camera";
 import { createHud } from "./ui/hud";
 import { createControls } from "./ui/controls";
 import { createInspector } from "./ui/inspector";
+import { createSandboxPanel } from "./ui/sandbox-panel";
 import { createWelcome } from "./ui/welcome";
 import { ReplayRecorder } from "./observe/replay";
 import { DEFAULT_TICKS_PER_SECOND, SPEED_STEPS, advanceTicks } from "./observe/pacing";
@@ -57,6 +58,7 @@ const pool = new MeshPool(ctx.scene, world.config.era);
 const observerCam = new ObserverCamera(ctx.camera, ctx.renderer.domElement, world.config.width, world.config.height);
 const hud = createHud(container);
 const inspector = createInspector(container);
+const sandboxPanel = createSandboxPanel(container, () => world);
 const recorder = new ReplayRecorder(1, 3600);
 
 // The run advances by accumulated wall-clock time, not a fixed number of ticks
@@ -107,6 +109,9 @@ const controls = createControls(container, {
     onChangeSetup: () => {
         welcome.show({ era: world.config.era, reproduction: world.config.reproduction });
     },
+    onToggleSandbox: () => {
+        sandboxPanel.toggle();
+    },
     onEndRun: () => {
         world.terminate();
     },
@@ -129,6 +134,7 @@ window.addEventListener("keydown", (event) => {
         restart();
     } else if (event.key === "Escape") {
         inspector.hide();
+        sandboxPanel.hide();
         pool.select(null);
         observerCam.follow(null);
     }
@@ -174,6 +180,7 @@ function restart(): void {
     pool.reset();
     replayIndex = null;
     inspector.hide();
+    sandboxPanel.update();
     observerCam.resetView();
     observerCam.updateFromSim(null, null);
     (window as unknown as { world?: World }).world = world;
@@ -225,6 +232,7 @@ function renderLive(animTime: number): void {
         observerCam.updateFromSim(selectedEntity ? selectedEntity.pos.x : null, selectedEntity ? selectedEntity.pos.y : null);
     }
     inspector.update(world);
+    sandboxPanel.update();
     hud.update(world, paused);
 }
 
@@ -298,4 +306,5 @@ function selectEntity(id: number | null): void {
     // Which subject the last click selected: the inspector keeps it, and an
     // outside driver cannot see it any other way.
     selected: () => inspector.selectedId(),
+    sandbox: sandboxPanel,
 };

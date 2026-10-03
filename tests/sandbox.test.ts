@@ -85,3 +85,121 @@ describe("sandbox mode and runtime interventions", () => {
         }
     });
 });
+
+function createMockElement(tag = "div"): any {
+    const listeners: Record<string, Function[]> = {};
+    const classes = new Set<string>();
+    const children: any[] = [];
+    const elementsById: Record<string, any> = {};
+
+    const el: any = {
+        tagName: tag.toUpperCase(),
+        id: "",
+        className: "",
+        textContent: "",
+        innerHTML: "",
+        value: "1.0",
+        hidden: false,
+        children,
+        classList: {
+            add: (c: string) => classes.add(c),
+            remove: (c: string) => classes.delete(c),
+            toggle: (c: string, force?: boolean) => {
+                if (force === undefined) {
+                    if (classes.has(c)) classes.delete(c);
+                    else classes.add(c);
+                } else if (force) {
+                    classes.add(c);
+                } else {
+                    classes.delete(c);
+                }
+                return classes.has(c);
+            },
+            contains: (c: string) => classes.has(c),
+        },
+        appendChild(child: any) {
+            children.push(child);
+            return child;
+        },
+        addEventListener(event: string, fn: Function) {
+            listeners[event] = listeners[event] || [];
+            listeners[event].push(fn);
+        },
+        dispatchEvent(evt: any) {
+            for (const fn of listeners[evt.type] || []) fn(evt);
+        },
+        click() {
+            this.dispatchEvent({ type: "click" });
+        },
+        querySelector(selector: string) {
+            const idMatch = selector.match(/#([\w-]+)/);
+            if (idMatch) {
+                const targetId = idMatch[1];
+                if (el.id === targetId) return el;
+                for (const child of children) {
+                    const found = child.querySelector(selector);
+                    if (found) return found;
+                }
+                if (!elementsById[targetId]) {
+                    const sub = createMockElement();
+                    sub.id = targetId;
+                    elementsById[targetId] = sub;
+                }
+                return elementsById[targetId];
+            }
+            return null;
+        },
+    };
+    return el;
+}
+
+describe("sandbox UI panel", () => {
+    it("mounts sandbox panel and handles reproduction and regrow controls", async () => {
+        const origDoc = globalThis.document;
+        globalThis.document = {
+            createElement: (tag: string) => createMockElement(tag),
+        } as unknown as Document;
+
+        try {
+            const { createSandboxPanel } = await import("../src/ui/sandbox-panel");
+            const container = createMockElement("div");
+            const world = new World(makeSeeding(42));
+            let intervenedCallbackCalled = false;
+
+            const panel = createSandboxPanel(container, () => world, {
+                onIntervention: () => {
+                    intervenedCallbackCalled = true;
+                },
+            });
+
+            expect(panel.isOpen()).toBe(false);
+            panel.toggle();
+            expect(panel.isOpen()).toBe(true);
+
+            const sexualBtn = container.querySelector("#sb-mode-sexual");
+            sexualBtn?.click();
+
+            expect(world.config.reproduction).toBe("sexual");
+            expect(world.intervened).toBe(true);
+            expect(intervenedCallbackCalled).toBe(true);
+
+            const slider = container.querySelector("#sb-regrow-slider");
+            if (slider) {
+                slider.value = "2.5";
+                slider.dispatchEvent({ type: "input" });
+                expect(world.config.plantRegrowPerTick).toBe(2.5);
+            }
+
+            const burstBtn = container.querySelector("#sb-burst-btn");
+            const plantCount = world.plants.length;
+            burstBtn?.click();
+            expect(world.plants.length).toBe(plantCount + 15);
+
+            panel.hide();
+            expect(panel.isOpen()).toBe(false);
+        } finally {
+            globalThis.document = origDoc;
+        }
+    });
+});
+

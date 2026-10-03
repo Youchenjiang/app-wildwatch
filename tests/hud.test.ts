@@ -39,6 +39,14 @@ describe("game-over veil", () => {
         expect(gameOverVeil("carnivore", 12, 340).title).toBe("肉食族群滅絕");
     });
 
+    it("distinguishes intervened runs in the game-over veil", () => {
+        const natural = gameOverVeil("herbivore", 50, 5000, false);
+        expect(natural.sub).not.toContain("人為干預局");
+
+        const intervened = gameOverVeil("herbivore", 50, 5000, true);
+        expect(intervened.sub).toContain("人為干預局");
+    });
+
     it("updates and clears DOM elements on state transitions and restarts", () => {
         const stateEl = { textContent: "", className: "" } as unknown as Element;
         const overEl = { hidden: false, style: { display: "" } } as unknown as HTMLElement;

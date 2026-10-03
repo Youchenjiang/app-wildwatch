@@ -19,6 +19,8 @@ export interface ControlsCallbacks {
     onCameraReset(): void;
     /** Reopen the seeding picker: scene and reproduction mode. */
     onChangeSetup(): void;
+    /** Toggle the sandbox experiment panel for runtime modifications. */
+    onToggleSandbox?(): void;
     onEndRun(): void;
 }
 
@@ -47,6 +49,7 @@ export function createControls(container: HTMLElement, callbacks: ControlsCallba
             <span class="ctl-sep"></span>
             <button id="ctl-cam" title="重置視角">🎯 重置</button>
             <button id="ctl-setup" title="選擇場景與繁殖方式，重新投放">⚙ 換設定</button>
+            <button id="ctl-sandbox" title="開啟沙盒實驗控制面板，進行運行中干預">🧪 沙盒</button>
             <button id="ctl-end" title="結束本局">⏹ 結束</button>
         </div>
         <div class="ctl-replay" id="ctl-replay" hidden>
@@ -77,6 +80,7 @@ export function createControls(container: HTMLElement, callbacks: ControlsCallba
     findElement<HTMLButtonElement>("#ctl-faster").addEventListener("click", () => callbacks.onSpeedChange(1));
     findElement<HTMLButtonElement>("#ctl-cam").addEventListener("click", () => callbacks.onCameraReset());
     findElement<HTMLButtonElement>("#ctl-setup").addEventListener("click", () => callbacks.onChangeSetup());
+    findElement<HTMLButtonElement>("#ctl-sandbox").addEventListener("click", () => callbacks.onToggleSandbox?.());
     findElement<HTMLButtonElement>("#ctl-end").addEventListener("click", () => callbacks.onEndRun());
     liveBtn.addEventListener("click", () => {
         replaying = false;
