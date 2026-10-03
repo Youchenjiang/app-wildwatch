@@ -93,6 +93,10 @@ export const POLICY = {
     // Body must contain a numbered list in English starting at "1. " or "1)".
     numberedListPattern: /^\s{0,3}1[.)]\s+/m,
   },
+  prBody: {
+    requiredSections: ["## Summary", "## Key Changes", "## Verification", "## Notes"],
+    templatePath: ".github/pull_request_template.md",
+  },
 };
 
 export function describeFormat() {
@@ -408,6 +412,7 @@ function printUsage() {
       "  node scripts/commit-policy.mjs subject <text>       validate one subject (PR title or commit subject)",
       "  node scripts/commit-policy.mjs message [file]       validate a full commit message (file path or stdin)",
       "  node scripts/commit-policy.mjs pr-body [file]       validate a PR description body (file path or stdin)",
+      "  node scripts/commit-policy.mjs template             print the pull request body template",
       "  node scripts/commit-policy.mjs list                 print the current policy",
       "  node scripts/commit-policy.mjs self-test            run built-in checks and exit non-zero on failure",
       "  node scripts/commit-policy.mjs suggest-scope [--json] [path…]  hint at the scope for staged files (or given paths)",
@@ -499,6 +504,17 @@ function main() {
       finish(validatePullRequestBody(text));
       break;
     }
+    case "template": {
+      try {
+        const template = readFileSync(POLICY.prBody.templatePath, "utf8");
+        process.stdout.write(template);
+        process.exit(0);
+      } catch (err) {
+        console.error(`Failed to read template file: ${err.message}`);
+        process.exit(1);
+      }
+      break;
+    }
     case "list":
       console.log(
         [
@@ -506,6 +522,8 @@ function main() {
           `scopes: ${POLICY.scopes.join(", ")}`,
           `subjectMaxLength: ${POLICY.subjectMaxLength}`,
           'body: numbered list starting with "1. " or "1)"',
+          `prBodySections: ${POLICY.prBody.requiredSections.join(", ")}`,
+          'prBodyRules: checklist under Verification, no unclosed backticks, no escaped backslash artifacts',
         ].join("\n"),
       );
       process.exit(0);
