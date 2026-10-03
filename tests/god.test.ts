@@ -166,7 +166,7 @@ describe("God Agent & Ecosystem Oversight", () => {
 
         world.tickStep();
 
-        expect(god.history.length).toBe(0);
+        expect(god.history).toHaveLength(0);
         expect(world.populationOf("carnivore")).toBe(0);
     });
 });
