@@ -94,4 +94,79 @@ describe("God Agent & Ecosystem Oversight", () => {
         expect(carnBefore.energy).toBeGreaterThanOrEqual(carnBefore.species.reproduceEnergy);
         expect(world.carrions.length).toBeGreaterThan(0);
     });
+
+    it("rejuvenates aging carnivores during predatorSanctuary", () => {
+        const config = {
+            ...makeSeeding(20260907),
+            herbivoreCount: 40,
+            carnivoreCount: 1,
+            enableGodAgent: true,
+        };
+        const world = new World(config);
+        const god = world.godAgent;
+        if (!god) throw new Error("GodAgent not initialized");
+        god.evalInterval = 1;
+
+        const carn = world.entities.find((e) => e.alive && e.species.kind === "carnivore");
+        if (!carn) throw new Error("Carnivore not found");
+        carn.age = Math.floor(carn.species.maxAge * 0.85);
+
+        world.tickStep();
+
+        expect(carn.age).toBeLessThanOrEqual(Math.floor(carn.species.maxAge * 0.3));
+    });
+
+    it("spawns a mating partner in sexual mode when carnivores are scarce", () => {
+        const config = {
+            ...makeSeeding(20260907),
+            herbivoreCount: 40,
+            carnivoreCount: 1,
+            reproduction: "sexual" as const,
+            enableGodAgent: true,
+        };
+        const world = new World(config);
+        const god = world.godAgent;
+        if (!god) throw new Error("GodAgent not initialized");
+        god.evalInterval = 1;
+
+        world.tickStep();
+
+        const livingCarns = world.entities.filter((e) => e.alive && e.species.kind === "carnivore");
+        expect(livingCarns.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("prioritizes predator sanctuary over bountiful rain when both populations are low", () => {
+        const config = {
+            ...makeSeeding(20260907),
+            herbivoreCount: 10,
+            carnivoreCount: 1,
+            enableGodAgent: true,
+        };
+        const world = new World(config);
+        const god = world.godAgent;
+        if (!god) throw new Error("GodAgent not initialized");
+        god.evalInterval = 1;
+
+        world.tickStep();
+
+        expect(god.history[0]?.action).toBe("predatorSanctuary");
+    });
+
+    it("does not intervene once true extinction occurs, respecting world contract", () => {
+        const config = {
+            ...makeSeeding(20260907),
+            herbivoreCount: 40,
+            carnivoreCount: 0,
+            enableGodAgent: true,
+        };
+        const world = new World(config);
+        const god = world.godAgent;
+        if (!god) throw new Error("GodAgent not initialized");
+        god.evalInterval = 1;
+
+        world.tickStep();
+
+        expect(god.history.length).toBe(0);
+        expect(world.populationOf("carnivore")).toBe(0);
+    });
 });
