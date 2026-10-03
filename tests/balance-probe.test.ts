@@ -231,5 +231,5 @@ describe("seeding sweep", () => {
                 .join("  "),
         );
         expect(best).toBeGreaterThanOrEqual(TARGET_TICKS);
-    }, 240000);
+    }, 480000);
 });

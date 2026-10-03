@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { World, type ReproductionMode, type WorldConfig } from "../src/sim/world";
+import { makeSeeding } from "../src/sim/seeding";
+import { grasslandEra, type EraConfig } from "../src/sim/era";
 
 /** Two herbivores and nothing else: every birth is attributable to them. */
 function makeConfig(
@@ -117,5 +119,15 @@ describe("reproduction mode", () => {
         expect(sexual.asexualBirths).toBe(0);
         expect(asexual.asexualBirths).toBeGreaterThan(0);
         expect(asexual.sexualBirths).toBe(0);
+    });
+
+    it("ensures makeSeeding floors both founder populations at 2 in sexual mode", () => {
+        const era: EraConfig = {
+            ...grasslandEra,
+            seeding: { herbivoreCount: 1, carnivoreCount: 1 },
+        };
+        const config = makeSeeding(20260907, era, "sexual");
+        expect(config.herbivoreCount).toBe(2);
+        expect(config.carnivoreCount).toBe(2);
     });
 });

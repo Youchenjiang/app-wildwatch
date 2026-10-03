@@ -494,6 +494,57 @@ export class World {
         this.plantGrid.insert(plant);
     }
 
+    /** Spawn high-yield carrion at a specific world location (divine sustenance). */
+    spawnCarrionAt(
+        x: number,
+        y: number,
+        energy: number,
+        fromId = -1,
+        fromGeneration = 0,
+        deathReason = "divine boon",
+    ): void {
+        const corpse: Carrion = {
+            id: this.nextId++,
+            x: Math.max(1, Math.min(this.config.width - 1, x)),
+            y: Math.max(1, Math.min(this.config.height - 1, y)),
+            energy,
+            alive: true,
+            fromId,
+            fromGeneration,
+            deathTick: this.tick,
+            deathReason,
+        };
+        this.carrions.push(corpse);
+        this.carrionGrid.insert(corpse);
+    }
+
+    /** Spawn a fresh organism from divine intervention or sacred seed. */
+    spawnDivineEntity(
+        kind: SpeciesKind,
+        pos?: Vec2,
+        initialBrain?: Brain,
+        energy?: number,
+    ): Entity {
+        const species =
+            kind === "carnivore"
+                ? (this.carnSpecies ?? SPECIES.carnivore)
+                : (this.herbSpecies ?? SPECIES.herbivore);
+        const entity = this.spawnEntity(
+            species,
+            1,
+            undefined,
+            undefined,
+            energy ?? species.reproduceEnergy * 0.8,
+            undefined,
+            initialBrain,
+        );
+        if (pos) {
+            entity.pos.x = Math.max(1, Math.min(this.config.width - 1, pos.x));
+            entity.pos.y = Math.max(1, Math.min(this.config.height - 1, pos.y));
+        }
+        return entity;
+    }
+
     private spawnEntity(
         species: SpeciesParams,
         generation: number,
@@ -855,7 +906,7 @@ export class World {
         const blend = 0.5 * cohesion;
         return {
             steer: steer * (1 - blend) + Math.sign(angleDiff) * blend,
-            thrust: Math.max(thrust, 0.5 + 0.2 * cohesion),
+            thrust: Math.max(thrust, 0.35 + 0.2 * cohesion),
         };
     }
 

@@ -59,6 +59,7 @@ export function createDefaultGodMemory(): GodMemory {
         policy: {
             rainPreyThreshold: 20,
             blightPredatorThreshold: 75,
+            sanctuaryPredatorThreshold: 3,
             interventionCooldown: 1000,
             socialTendency: 0.5,
         } satisfies GodPolicy,
