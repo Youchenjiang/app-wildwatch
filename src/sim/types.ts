@@ -30,6 +30,8 @@ export interface GodPolicy {
     rainPreyThreshold: number;
     /** Predator population count above which metabolic blight is triggered. */
     blightPredatorThreshold: number;
+    /** Predator population count below which predator sanctuary is triggered. */
+    sanctuaryPredatorThreshold?: number;
     /** Cooldown in ticks between god interventions. */
     interventionCooldown: number;
     /** Baseline tendency toward pack cohesion (0: solitary, 1: tight pack). */
