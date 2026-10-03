@@ -70,7 +70,7 @@ export class GodAgent {
         // Emergency 3: Predator collapse -> Predator Sanctuary (肉食庇護)
         const sanctuaryThreshold = this.memory.policy.sanctuaryPredatorThreshold ?? 3;
         if (carns <= sanctuaryThreshold && herbs >= 6) {
-            this.predatorSanctuary(carns);
+            this.predatorSanctuary();
             this.lastInterventionTick = tick;
             this.history.push({
                 tick,
@@ -116,7 +116,7 @@ export class GodAgent {
     }
 
     /** Revitalize endangered carnivores and drop divine sustenance to prevent species extinction. */
-    predatorSanctuary(carns: number): void {
+    predatorSanctuary(): void {
         const carnivores = this.world.entities.filter((e) => e.alive && e.species.kind === "carnivore");
         if (carnivores.length > 0) {
             for (const carn of carnivores) {
