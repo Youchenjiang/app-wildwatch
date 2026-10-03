@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { World } from "../src/sim/world";
 import { makeSeeding } from "../src/sim/seeding";
-import { GodAgent } from "../src/sim/god";
-import { createMockElement } from "./test-dom-helper";
+import { asHTMLElement, createMockElement } from "./test-dom-helper";
 
 describe("sandbox mode and runtime interventions", () => {
     it("starts as a pristine run with no interventions", () => {
@@ -100,7 +99,7 @@ describe("sandbox UI panel", () => {
             const world = new World(makeSeeding(42));
             let intervenedCallbackCalled = false;
 
-            const panel = createSandboxPanel(container, () => world, {
+            const panel = createSandboxPanel(asHTMLElement(container), () => world, {
                 onIntervention: () => {
                     intervenedCallbackCalled = true;
                 },

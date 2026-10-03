@@ -1587,6 +1587,7 @@ export class World {
         const prev = this.config.plantRegrowPerTick;
         if (prev === safeRate) return;
         this.config.plantRegrowPerTick = safeRate;
+        this.plantParams.regrowPerTick = safeRate;
         this.recordIntervention(`plantRegrow:${prev.toFixed(2)}->${safeRate.toFixed(2)}`);
     }
 
