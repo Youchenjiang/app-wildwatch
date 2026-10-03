@@ -71,4 +71,27 @@ describe("God Agent & Ecosystem Oversight", () => {
         expect(exported.sacredSeeds.herbivore.fitness).toBe(99999);
         expect(exported.policy).toBeDefined();
     });
+
+    it("triggers predatorSanctuary when carnivores fall to endangered levels", () => {
+        const config = {
+            ...makeSeeding(20260907),
+            herbivoreCount: 40,
+            carnivoreCount: 1, // Endangered (<= 2)
+            enableGodAgent: true,
+        };
+        const world = new World(config);
+        const god = world.godAgent;
+        if (!god) throw new Error("GodAgent not initialized");
+        god.evalInterval = 1;
+
+        const carnBefore = world.entities.find((e) => e.alive && e.species.kind === "carnivore");
+        if (!carnBefore) throw new Error("Carnivore not found");
+        carnBefore.energy = 20;
+
+        world.tickStep();
+
+        expect(god.history.some((h) => h.action === "predatorSanctuary")).toBe(true);
+        expect(carnBefore.energy).toBeGreaterThanOrEqual(carnBefore.species.reproduceEnergy);
+        expect(world.carrions.length).toBeGreaterThan(0);
+    });
 });
