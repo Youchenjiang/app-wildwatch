@@ -63,6 +63,8 @@ export function preselect(
 export interface Welcome {
     /** Open the picker, preselecting what is currently running. */
     show(current?: WelcomeCurrent): void;
+    /** Close the picker without starting a new run. */
+    close(): void;
     /** True while the picker is open and therefore owns the keyboard. */
     isOpen(): boolean;
 }
@@ -91,6 +93,7 @@ export function createWelcome(
         )
         .join("");
     el.innerHTML = `
+        <button type="button" id="welcome-close" class="welcome-close" title="取消並返回觀察" hidden>✕</button>
         <div class="welcome-icon">🧬</div>
         <div class="welcome-title">演化觀察者</div>
         <div class="welcome-sub">
@@ -107,8 +110,11 @@ export function createWelcome(
             <div class="mode-cards">${modeCards}</div>
             <div class="mode-desc" id="mode-desc"></div>
         </div>
-        <button id="welcome-start">開始觀察</button>
-        <div class="welcome-keys">空白鍵 暫停 · +/− 速度 · R 重新投放</div>
+        <div class="welcome-actions">
+            <button type="button" id="welcome-cancel" class="welcome-cancel" hidden>取消返回</button>
+            <button type="button" id="welcome-start">開始觀察</button>
+        </div>
+        <div class="welcome-keys">空白鍵 暫停 · +/− 速度 · R 重新投放 · Esc 取消</div>
     `;
     container.appendChild(el);
 
@@ -160,8 +166,15 @@ export function createWelcome(
      * only by dismissing itself, so clicking 開始觀察 left it listening, and the
      * next Space press — meant to pause the run — re-seeded the world instead.
      */
+    let canDismiss = false;
+
     const dismiss = (event: KeyboardEvent): void => {
-        if (event.key === "Enter" || event.key === " ") {
+        if (event.key === "Escape") {
+            if (canDismiss) {
+                event.preventDefault();
+                close();
+            }
+        } else if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
             start();
         }
@@ -185,17 +198,33 @@ export function createWelcome(
         startButton.addEventListener("click", () => start());
     }
 
+    const closeButton = el.querySelector<HTMLButtonElement>("#welcome-close");
+    if (closeButton) {
+        closeButton.addEventListener("click", () => close());
+    }
+
+    const cancelButton = el.querySelector<HTMLButtonElement>("#welcome-cancel");
+    if (cancelButton) {
+        cancelButton.addEventListener("click", () => close());
+    }
+
     return {
         show(current: WelcomeCurrent = {}): void {
             const pick = preselect(eras, current);
             selectedEra = pick.era;
             selectedMode = pick.mode;
             render();
+            canDismiss = current.era !== undefined || current.reproduction !== undefined;
+            if (closeButton) closeButton.hidden = !canDismiss;
+            if (cancelButton) cancelButton.hidden = !canDismiss;
             el.hidden = false;
             open = true;
             // Remove first so a second show() cannot stack listeners.
             window.removeEventListener("keydown", dismiss);
             window.addEventListener("keydown", dismiss);
+        },
+        close(): void {
+            close();
         },
         isOpen(): boolean {
             return open;

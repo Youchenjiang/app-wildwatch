@@ -664,10 +664,52 @@ body {
     color: #ff7b6b;
 }
 
+#welcome .welcome-close {
+    position: absolute;
+    top: 24px;
+    right: 28px;
+    background: none;
+    border: none;
+    color: #8ba595;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 6px;
+    line-height: 1;
+    transition: color 0.15s;
+}
+
+#welcome .welcome-close:hover {
+    color: #e2f0e6;
+}
+
+#welcome .welcome-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 8px;
+}
+
+#welcome-cancel {
+    padding: 8px 20px;
+    font-size: 14px;
+    font-weight: 500;
+    font-family: inherit;
+    color: #a8c4b2;
+    background: rgba(30, 46, 36, 0.85);
+    border: 1px solid rgba(130, 170, 140, 0.3);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+#welcome-cancel:hover {
+    background: rgba(50, 72, 58, 0.9);
+    color: #e2f0e6;
+}
+
 /* Scoped to the start button only: a bare `#welcome button` selector would
    also match the era cards and override their (lower-specificity) styling. */
 #welcome-start {
-    margin-top: 8px;
     padding: 8px 28px;
     font-size: 14px;
     font-weight: 600;
