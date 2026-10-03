@@ -1,4 +1,5 @@
 import type { World } from "./world";
+import type { Entity } from "./entity";
 import type { GodMemory, SerializedBrainWeights, SpeciesKind } from "./types";
 import { createDefaultGodMemory, sacredSeedToBrain } from "./persistence";
 import { Brain } from "./brain";
@@ -115,49 +116,53 @@ export class GodAgent {
         }
     }
 
+    private revitalizePredator(carn: Entity): void {
+        // Ensure sufficient energy to prevent starvation and trigger reproduction
+        carn.energy = Math.max(carn.energy, carn.species.reproduceEnergy * 1.15);
+        carn.reproduceCooldown = 0;
+        // If aging towards end of life without descendants, rejuvenate
+        if (carn.age > carn.species.maxAge * 0.7) {
+            carn.age = Math.floor(carn.species.maxAge * 0.25);
+        }
+        // Drop high-value fresh carrion right beside the carnivore
+        this.world.spawnCarrionAt(
+            carn.pos.x + (this.world.rng() - 0.5) * 4,
+            carn.pos.y + (this.world.rng() - 0.5) * 4,
+            carn.species.reproduceCost,
+            -1,
+            0,
+            "divine sustenance",
+        );
+    }
+
+    private spawnSacredPredator(pos?: { x: number; y: number }, energy?: number): void {
+        const sacred = this.memory.sacredSeeds.carnivore;
+        const brain = sacred ? sacredSeedToBrain(sacred) : undefined;
+        this.world.spawnDivineEntity("carnivore", pos, brain, energy);
+    }
+
     /** Revitalize endangered carnivores and drop divine sustenance to prevent species extinction. */
     predatorSanctuary(): void {
         const carnivores = this.world.entities.filter((e) => e.alive && e.species.kind === "carnivore");
         if (carnivores.length > 0) {
             for (const carn of carnivores) {
-                // Ensure sufficient energy to prevent starvation and trigger reproduction
-                carn.energy = Math.max(carn.energy, carn.species.reproduceEnergy * 1.15);
-                carn.reproduceCooldown = 0;
-                // If aging towards end of life without descendants, rejuvenate
-                if (carn.age > carn.species.maxAge * 0.7) {
-                    carn.age = Math.floor(carn.species.maxAge * 0.25);
-                }
-                // Drop high-value fresh carrion right beside the carnivore
-                this.world.spawnCarrionAt(
-                    carn.pos.x + (this.world.rng() - 0.5) * 4,
-                    carn.pos.y + (this.world.rng() - 0.5) * 4,
-                    carn.species.reproduceCost,
-                    -1,
-                    0,
-                    "divine sustenance",
-                );
+                this.revitalizePredator(carn);
             }
 
             // In sexual mode, an endangered predator cannot mate without a nearby partner
             if (this.world.config.reproduction === "sexual" && carnivores.length < 4) {
                 const target = carnivores[0];
-                const sacred = this.memory.sacredSeeds.carnivore;
-                const brain = sacred ? sacredSeedToBrain(sacred) : undefined;
-                this.world.spawnDivineEntity(
-                    "carnivore",
+                this.spawnSacredPredator(
                     {
                         x: target.pos.x + (this.world.rng() - 0.5) * 2,
                         y: target.pos.y + (this.world.rng() - 0.5) * 2,
                     },
-                    brain,
                     target.species.reproduceEnergy * 1.15,
                 );
             }
         } else {
             // Extinction recovery: seed fresh champion predator from sacred seed
-            const sacred = this.memory.sacredSeeds.carnivore;
-            const brain = sacred ? sacredSeedToBrain(sacred) : undefined;
-            this.world.spawnDivineEntity("carnivore", undefined, brain);
+            this.spawnSacredPredator();
         }
 
         // Soften pack cohesion so solitary/endangered carnivores don't burn energy on forced high thrust
