@@ -121,7 +121,7 @@ export function createSandboxPanel(
 
     regrowSlider.addEventListener("input", () => {
         const world = getWorld();
-        const val = parseFloat(regrowSlider.value);
+        const val = Number.parseFloat(regrowSlider.value);
         world.setPlantRegrowRate(val);
         refresh();
         callbacks?.onIntervention?.();
