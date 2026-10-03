@@ -170,8 +170,9 @@ export class GodAgent {
         }
     }
 
-    /** Observe top-performing organisms and archive champion genomes into sacred seeds. */
+    /** Observe top-performing organisms and archive champion genomes into sacred seeds (only from pristine natural runs). */
     harvestSacredSeeds(): void {
+        if (this.world.intervened) return;
         const kinds: SpeciesKind[] = ["herbivore", "carnivore"];
         let updated = false;
         for (const kind of kinds) {
