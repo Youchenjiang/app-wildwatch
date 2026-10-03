@@ -257,11 +257,12 @@ export function validatePullRequestBody(bodyText) {
     return errors;
   }
 
-  // Required sections according to .github/pull_request_template.md
+  // Required sections according to .github/pull_request_template.md and docs/engineering/commit-policy.md
   const requiredSections = [
     { title: "## Summary", pattern: /^##\s+Summary\b/m },
     { title: "## Key Changes", pattern: /^##\s+Key Changes\b/m },
     { title: "## Verification", pattern: /^##\s+Verification\b/m },
+    { title: "## Notes", pattern: /^##\s+Notes\b/m },
   ];
 
   for (const { title, pattern } of requiredSections) {
@@ -270,10 +271,40 @@ export function validatePullRequestBody(bodyText) {
     }
   }
 
-  // Verification section must contain checked or unchecked items
-  const verificationPattern = /^##\s+Verification\b[\s\S]*?-\s+\[[ xX]\]/m;
-  if (!verificationPattern.test(text)) {
-    errors.push('PR body "## Verification" section must contain checklist items (e.g. "- [x] ...").');
+  // Verification section must contain valid checklist items with backtick code spans
+  const verificationMatch = text.match(/##\s+Verification\b([\s\S]*?)(?=##\s+Notes\b|$)/);
+  if (!verificationMatch) {
+    errors.push('PR body must contain a "## Verification" section before "## Notes".');
+  } else {
+    const verificationContent = verificationMatch[1].trim();
+    const checklistItems = verificationContent
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.startsWith("- ["));
+
+    if (checklistItems.length === 0) {
+      errors.push('PR body "## Verification" section must contain checklist items (e.g. "- [x] ...").');
+    }
+
+    for (const item of checklistItems) {
+      if (!/^-\s+\[[ xX]\]\s+.+/.test(item)) {
+        errors.push(`Invalid checklist item format: "${item}".`);
+      }
+    }
+  }
+
+  // Detect corrupted backticks / escaped command artifacts (e.g., \npm run build\ or \docs/...)
+  const escapedArtifactPattern = /\\(?:npm|npx|node|git|tests?|docs|src|dist)[^\\\n]*\\/;
+  if (escapedArtifactPattern.test(text)) {
+    errors.push(
+      "PR body contains corrupted escaped inline code artifacts (e.g. \\command\\ instead of `command`). Use backticks for code and paths.",
+    );
+  }
+
+  // Check for unmatched backticks across the entire PR body
+  const backtickCount = (text.match(/`/g) || []).length;
+  if (backtickCount % 2 !== 0) {
+    errors.push(`PR body has an unmatched backtick (total backticks: ${backtickCount}). Ensure all code spans are closed.`);
   }
 
   return errors;
@@ -326,12 +357,27 @@ function runSelfTest() {
 
   check(
     "valid pr body",
-    validatePullRequestBody("## Summary\n\nFix issue.\n\n## Key Changes\n\n1. Change code.\n\n## Verification\n\n- [x] `npm test` passes\n"),
+    validatePullRequestBody("## Summary\n\nFix issue.\n\n## Key Changes\n\n1. Change code.\n\n## Verification\n\n- [x] `npm test` passes\n\n## Notes\n\nNo notes.\n"),
     false,
   );
   check(
+    "pr body missing notes",
+    validatePullRequestBody("## Summary\n\nFix issue.\n\n## Key Changes\n\n1. Change code.\n\n## Verification\n\n- [x] `npm test` passes\n"),
+    true,
+  );
+  check(
     "pr body missing verification",
-    validatePullRequestBody("## Summary\n\nFix issue.\n\n## Key Changes\n\n1. Change code.\n"),
+    validatePullRequestBody("## Summary\n\nFix issue.\n\n## Key Changes\n\n1. Change code.\n\n## Notes\n\nNo notes.\n"),
+    true,
+  );
+  check(
+    "pr body corrupted escaped artifact",
+    validatePullRequestBody("## Summary\n\nFix issue.\n\n## Key Changes\n\n1. Run \\npm run build\\.\n\n## Verification\n\n- [x] `npm test` passes\n\n## Notes\n\nNone.\n"),
+    true,
+  );
+  check(
+    "pr body unmatched backticks",
+    validatePullRequestBody("## Summary\n\nFix issue.\n\n## Key Changes\n\n1. Run `npm test.\n\n## Verification\n\n- [x] `npm test` passes\n\n## Notes\n\nNone.\n"),
     true,
   );
   check(
