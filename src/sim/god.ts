@@ -1,11 +1,11 @@
 import type { World } from "./world";
 import type { GodMemory, SerializedBrainWeights, SpeciesKind } from "./types";
-import { createDefaultGodMemory } from "./persistence";
+import { createDefaultGodMemory, sacredSeedToBrain } from "./persistence";
 import { Brain } from "./brain";
 
 export interface DivineInterventionEvent {
     tick: number;
-    action: "bountifulRain" | "metabolicBlight" | "rebalanceSocialCohesion";
+    action: "bountifulRain" | "metabolicBlight" | "rebalanceSocialCohesion" | "predatorSanctuary";
     reason: string;
 }
 
@@ -34,7 +34,7 @@ export class GodAgent {
         const herbs = this.world.populationOf("herbivore");
         const carns = this.world.populationOf("carnivore");
 
-        if (herbs === 0 || carns === 0) return;
+        if (herbs === 0 && carns === 0) return;
 
         const cooldown = this.memory.policy.interventionCooldown;
         if (tick - this.lastInterventionTick < cooldown) return;
@@ -63,6 +63,19 @@ export class GodAgent {
                 tick,
                 action: "metabolicBlight",
                 reason: `Predators exploded to ${carns} (threshold ${this.memory.policy.blightPredatorThreshold})`,
+            });
+            return;
+        }
+
+        // Emergency 3: Predator collapse -> Predator Sanctuary (肉食庇護)
+        const sanctuaryThreshold = this.memory.policy.sanctuaryPredatorThreshold ?? 3;
+        if (carns <= sanctuaryThreshold && herbs >= 6) {
+            this.predatorSanctuary(carns);
+            this.lastInterventionTick = tick;
+            this.history.push({
+                tick,
+                action: "predatorSanctuary",
+                reason: `Carnivores endangered (${carns}), granted divine sustenance and breeding vigor`,
             });
             return;
         }
@@ -99,6 +112,57 @@ export class GodAgent {
         const cullCount = Math.min(carns.length - 4, Math.ceil(carns.length * 0.25));
         for (const carn of carns.slice(0, cullCount)) {
             this.world.cullEntity(carn, "metabolic blight");
+        }
+    }
+
+    /** Revitalize endangered carnivores and drop divine sustenance to prevent species extinction. */
+    predatorSanctuary(carns: number): void {
+        const carnivores = this.world.entities.filter((e) => e.alive && e.species.kind === "carnivore");
+        if (carnivores.length > 0) {
+            for (const carn of carnivores) {
+                // Ensure sufficient energy to prevent starvation and trigger reproduction
+                carn.energy = Math.max(carn.energy, carn.species.reproduceEnergy * 1.15);
+                carn.reproduceCooldown = 0;
+                // If aging towards end of life without descendants, rejuvenate
+                if (carn.age > carn.species.maxAge * 0.7) {
+                    carn.age = Math.floor(carn.species.maxAge * 0.25);
+                }
+                // Drop high-value fresh carrion right beside the carnivore
+                this.world.spawnCarrionAt(
+                    carn.pos.x + (this.world.rng() - 0.5) * 4,
+                    carn.pos.y + (this.world.rng() - 0.5) * 4,
+                    carn.species.reproduceCost,
+                    -1,
+                    0,
+                    "divine sustenance",
+                );
+            }
+
+            // In sexual mode, an endangered predator cannot mate without a nearby partner
+            if (this.world.config.reproduction === "sexual" && carnivores.length < 4) {
+                const target = carnivores[0];
+                const sacred = this.memory.sacredSeeds.carnivore;
+                const brain = sacred ? sacredSeedToBrain(sacred) : undefined;
+                this.world.spawnDivineEntity(
+                    "carnivore",
+                    {
+                        x: target.pos.x + (this.world.rng() - 0.5) * 2,
+                        y: target.pos.y + (this.world.rng() - 0.5) * 2,
+                    },
+                    brain,
+                    target.species.reproduceEnergy * 1.15,
+                );
+            }
+        } else {
+            // Extinction recovery: seed fresh champion predator from sacred seed
+            const sacred = this.memory.sacredSeeds.carnivore;
+            const brain = sacred ? sacredSeedToBrain(sacred) : undefined;
+            this.world.spawnDivineEntity("carnivore", undefined, brain);
+        }
+
+        // Soften pack cohesion so solitary/endangered carnivores don't burn energy on forced high thrust
+        if (this.world.config.socialMode === "pack") {
+            this.world.setSocialMode("pack", 0.4);
         }
     }
 
