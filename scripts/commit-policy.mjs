@@ -516,14 +516,14 @@ function main() {
       break;
     }
     case "list":
-      console.log(
+      process.stdout.write(
         [
           `types: ${POLICY.types.join(", ")}`,
           `scopes: ${POLICY.scopes.join(", ")}`,
           `subjectMaxLength: ${POLICY.subjectMaxLength}`,
           'body: numbered list starting with "1. " or "1)"',
           `prBodySections: ${POLICY.prBody.requiredSections.join(", ")}`,
-          'prBodyRules: checklist under Verification, no unclosed backticks, no escaped backslash artifacts',
+          'prBodyRules: checklist under Verification, no unclosed backticks, no escaped backslash artifacts\n',
         ].join("\n"),
       );
       process.exit(0);
