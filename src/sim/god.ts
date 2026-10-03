@@ -35,12 +35,27 @@ export class GodAgent {
         const herbs = this.world.populationOf("herbivore");
         const carns = this.world.populationOf("carnivore");
 
-        if (herbs === 0 && carns === 0) return;
+        // Either species dying out ends the run: do not intervene once extinction occurs
+        if (herbs === 0 || carns === 0) return;
 
         const cooldown = this.memory.policy.interventionCooldown;
         if (tick - this.lastInterventionTick < cooldown) return;
 
-        // Emergency 1: Prey collapse -> Bountiful Rain
+        // Emergency 1: Predator collapse -> Predator Sanctuary (肉食庇護)
+        // Carnivore extinction is immediate and catastrophic; prioritize over herbivore rain
+        const sanctuaryThreshold = this.memory.policy.sanctuaryPredatorThreshold ?? 3;
+        if (carns <= sanctuaryThreshold) {
+            this.predatorSanctuary();
+            this.lastInterventionTick = tick;
+            this.history.push({
+                tick,
+                action: "predatorSanctuary",
+                reason: `Carnivores endangered (${carns}), granted divine sustenance and breeding vigor`,
+            });
+            return;
+        }
+
+        // Emergency 2: Prey collapse -> Bountiful Rain
         if (herbs <= this.memory.policy.rainPreyThreshold) {
             this.bountifulRain(30);
             this.lastInterventionTick = tick;
@@ -56,7 +71,7 @@ export class GodAgent {
             return;
         }
 
-        // Emergency 2: Predator boom -> Metabolic Blight
+        // Emergency 3: Predator boom -> Metabolic Blight
         if (carns >= this.memory.policy.blightPredatorThreshold) {
             this.metabolicBlight();
             this.lastInterventionTick = tick;
@@ -64,19 +79,6 @@ export class GodAgent {
                 tick,
                 action: "metabolicBlight",
                 reason: `Predators exploded to ${carns} (threshold ${this.memory.policy.blightPredatorThreshold})`,
-            });
-            return;
-        }
-
-        // Emergency 3: Predator collapse -> Predator Sanctuary (肉食庇護)
-        const sanctuaryThreshold = this.memory.policy.sanctuaryPredatorThreshold ?? 3;
-        if (carns <= sanctuaryThreshold && herbs >= 6) {
-            this.predatorSanctuary();
-            this.lastInterventionTick = tick;
-            this.history.push({
-                tick,
-                action: "predatorSanctuary",
-                reason: `Carnivores endangered (${carns}), granted divine sustenance and breeding vigor`,
             });
             return;
         }
@@ -144,25 +146,22 @@ export class GodAgent {
     /** Revitalize endangered carnivores and drop divine sustenance to prevent species extinction. */
     predatorSanctuary(): void {
         const carnivores = this.world.entities.filter((e) => e.alive && e.species.kind === "carnivore");
-        if (carnivores.length > 0) {
-            for (const carn of carnivores) {
-                this.revitalizePredator(carn);
-            }
+        if (carnivores.length === 0) return;
 
-            // In sexual mode, an endangered predator cannot mate without a nearby partner
-            if (this.world.config.reproduction === "sexual" && carnivores.length < 4) {
-                const target = carnivores[0];
-                this.spawnSacredPredator(
-                    {
-                        x: target.pos.x + (this.world.rng() - 0.5) * 2,
-                        y: target.pos.y + (this.world.rng() - 0.5) * 2,
-                    },
-                    target.species.reproduceEnergy * 1.15,
-                );
-            }
-        } else {
-            // Extinction recovery: seed fresh champion predator from sacred seed
-            this.spawnSacredPredator();
+        for (const carn of carnivores) {
+            this.revitalizePredator(carn);
+        }
+
+        // In sexual mode, an endangered predator cannot mate without a nearby partner
+        if (this.world.config.reproduction === "sexual" && carnivores.length < 4) {
+            const target = carnivores[0];
+            this.spawnSacredPredator(
+                {
+                    x: target.pos.x + (this.world.rng() - 0.5) * 2,
+                    y: target.pos.y + (this.world.rng() - 0.5) * 2,
+                },
+                target.species.reproduceEnergy * 1.15,
+            );
         }
 
         // Soften pack cohesion so solitary/endangered carnivores don't burn energy on forced high thrust
