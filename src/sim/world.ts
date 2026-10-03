@@ -855,7 +855,7 @@ export class World {
         const blend = 0.5 * cohesion;
         return {
             steer: steer * (1 - blend) + Math.sign(angleDiff) * blend,
-            thrust: Math.max(thrust, 0.5 + 0.2 * cohesion),
+            thrust: Math.max(thrust, 0.35 + 0.2 * cohesion),
         };
     }
 

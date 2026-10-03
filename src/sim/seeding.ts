@@ -49,7 +49,10 @@ export function makeSeeding(
         height: 120,
         seed,
         herbivoreCount: counts.herbivoreCount ?? BASE_SEEDING.herbivoreCount,
-        carnivoreCount: counts.carnivoreCount ?? BASE_SEEDING.carnivoreCount,
+        carnivoreCount:
+            reproduction === "sexual"
+                ? Math.max(2, counts.carnivoreCount ?? BASE_SEEDING.carnivoreCount)
+                : (counts.carnivoreCount ?? BASE_SEEDING.carnivoreCount),
         plantCount: counts.plantCount ?? BASE_SEEDING.plantCount,
         plantRegrowPerTick: plant.regrowPerTick ?? 1,
         plantEnergy: plant.energy ?? 18,
