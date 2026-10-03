@@ -31,14 +31,26 @@ describe("sandbox mode and runtime interventions", () => {
         expect(world.interventions).toHaveLength(1);
     });
 
-    it("records intervention when plant regrow rate is adjusted", () => {
-        const world = new World(makeSeeding(42));
-        const initialRate = world.config.plantRegrowPerTick;
+    it("records intervention and accelerates live plant regrowth when rate is adjusted", () => {
+        // Create baseline world with 0 herbivores/carnivores to observe pure plant regrowth
+        const worldA = new World({ ...makeSeeding(42), herbivoreCount: 0, carnivoreCount: 0, plantCount: 10 });
+        const worldB = new World({ ...makeSeeding(42), herbivoreCount: 0, carnivoreCount: 0, plantCount: 10 });
 
-        world.setPlantRegrowRate(initialRate * 2);
-        expect(world.config.plantRegrowPerTick).toBe(initialRate * 2);
-        expect(world.intervened).toBe(true);
-        expect(world.interventions[0].action).toContain("plantRegrow:");
+        const initialRate = worldA.config.plantRegrowPerTick;
+        // Double regrowth rate in worldB
+        worldB.setPlantRegrowRate(initialRate * 2);
+
+        expect(worldB.config.plantRegrowPerTick).toBe(initialRate * 2);
+        expect(worldB.intervened).toBe(true);
+        expect(worldB.interventions[0].action).toContain("plantRegrow:");
+
+        // Run both worlds for 50 ticks and verify worldB produces more plants
+        for (let i = 0; i < 50; i++) {
+            worldA.tickStep();
+            worldB.tickStep();
+        }
+
+        expect(worldB.plants.length).toBeGreaterThan(worldA.plants.length);
     });
 
     it("records plant burst intervention and spawns additional plants", () => {
