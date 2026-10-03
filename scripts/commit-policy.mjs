@@ -276,7 +276,8 @@ export function validatePullRequestBody(bodyText) {
   }
 
   // Verification section must contain valid checklist items with backtick code spans
-  const verificationMatch = text.match(/##\s+Verification\b([\s\S]*?)(?=##\s+Notes\b|$)/);
+  const verificationRegex = /##\s+Verification\b([\s\S]*?)(?=##\s+Notes\b|$)/;
+  const verificationMatch = verificationRegex.exec(text);
   if (!verificationMatch) {
     errors.push('PR body must contain a "## Verification" section before "## Notes".');
   } else {
@@ -300,10 +301,10 @@ export function validatePullRequestBody(bodyText) {
   // Detect corrupted backticks / escaped command artifacts (e.g., \npm run build\, \world.setReproductionMode()\, \path/to/file\)
   // Any non-empty span enclosed in backslashes containing identifier/code characters is invalid.
   const escapedArtifactPattern = /\\([a-zA-Z0-9_./#:@<>()'" -]+)\\/;
-  if (escapedArtifactPattern.test(text)) {
-    const matched = text.match(escapedArtifactPattern);
+  const artifactMatch = escapedArtifactPattern.exec(text);
+  if (artifactMatch) {
     errors.push(
-      `PR body contains corrupted escaped inline code artifacts ("${matched[0]}" instead of \`${matched[1]}\`). Use backticks for code, paths, and identifiers.`,
+      `PR body contains corrupted escaped inline code artifacts ("${artifactMatch[0]}" instead of \`${artifactMatch[1]}\`). Use backticks for code, paths, and identifiers.`,
     );
   }
 

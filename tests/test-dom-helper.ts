@@ -70,7 +70,7 @@ export function createMockElement(tag = "div"): MockElement {
             this.dispatchEvent({ type: "click" });
         },
         querySelector<E = MockElement>(selector: string): E | null {
-            const idMatch = selector.match(/#([\w-]+)/);
+            const idMatch = /#([\w-]+)/.exec(selector);
             if (idMatch) {
                 const targetId = idMatch[1];
                 if (el.id === targetId) return el as unknown as E;
